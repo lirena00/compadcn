@@ -3,10 +3,16 @@
   "version": "0.0.1",
   "description": "",
   "main": "index.js",
+  "bin": "./dist/index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "tsc -w",
+    "link-it": "pnpm unlink --global && pnpm link --global"
   },
   "keywords": [],
   "author": "",
-  "license": "ISC"
+  "license": "ISC",
+  "devDependencies": {
+    "@types/node": "^24.0.1",
+    "typescript": "^5.8.3"
+  }
 }
