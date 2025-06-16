@@ -1,18 +1,53 @@
 {
   "name": "compadcn",
   "version": "0.0.1",
-  "description": "",
+  "description": "CLI for installing and managing ShadCN UI components",
+  "type": "module",
   "main": "index.js",
-  "bin": "./dist/index.js",
-  "scripts": {
-    "dev": "tsc -w",
-    "link-it": "pnpm unlink --global && pnpm link --global"
+  "bin": {
+    "compadcn": "./dist/index.js"
   },
-  "keywords": [],
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist/**/*"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/index.ts",
+    "dev:watch": "tsx watch src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "clean": "rimraf dist",
+    "prepublishOnly": "pnpm run clean && pnpm run build",
+    "link-cli": "pnpm run build && pnpm unlink --global && pnpm link --global"
+  },
+  "keywords": [
+    "cli",
+    "shadcn",
+    "ui",
+    "components",
+    "typescript"
+  ],
   "author": "",
   "license": "ISC",
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "devDependencies": {
     "@types/node": "^24.0.1",
+    "rimraf": "^6.0.1",
+    "tsx": "^4.20.3",
     "typescript": "^5.8.3"
+  },
+  "dependencies": {
+    "@clack/prompts": "^0.11.0",
+    "chalk": "^5.4.1",
+    "commander": "^14.0.0",
+    "execa": "^9.6.0",
+    "gradient-string": "^3.0.0"
   }
 }
