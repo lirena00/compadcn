@@ -3,6 +3,7 @@
 import { Command } from "commander";
 import { renderTitle } from "./utils/renderTitle.js";
 import { runPresetUI } from "./commands/preset.js";
+import { runInitUI } from "./commands/init.js";
 
 const program = new Command();
 
@@ -16,5 +17,10 @@ program
   .command("preset")
   .description("Launch interactive TUI to select components")
   .action(runPresetUI);
+
+program
+  .command("init")
+  .description("Initialize a new project with ShadCN components")
+  .action(runInitUI);
 
 program.parse(process.argv);

@@ -23,57 +23,8 @@ import {
   type Preset,
   type PresetsData,
 } from "../lib/presets_config.js";
-
-// Helper function to build the install command
-function buildInstallCommand(
-  packageManager: PackageManager,
-  components: string[]
-): { command: string; args: string[] } {
-  const baseArgs = ["shadcn@latest", "add", ...components];
-
-  switch (packageManager) {
-    case "pnpm":
-      return { command: "pnpm", args: ["dlx", ...baseArgs] };
-    case "yarn":
-      return { command: "yarn", args: ["dlx", ...baseArgs] };
-    case "bun":
-      return { command: "bunx", args: ["--bun", ...baseArgs] };
-    case "npm":
-    default:
-      return { command: "npx", args: baseArgs };
-  }
-}
-
-// Helper function to execute the install command
-async function installComponents(components: Component[]): Promise<void> {
-  const packageManager = getUserPkgManager();
-  const componentValues = components.map((comp) => comp.value);
-  const { command, args } = buildInstallCommand(
-    packageManager,
-    componentValues
-  );
-
-  const s = spinner();
-  s.start(`Installing components using ${packageManager}...`);
-
-  try {
-    await execa(command, args, {
-      // stdio: "inherit", // This will show the output from shadcn CLI
-      cwd: process.cwd(),
-    });
-    s.stop("✅ Components installed successfully");
-  } catch (error) {
-    s.stop("❌ Installation failed");
-    console.error(chalk.red("Error installing components:"));
-
-    // Enhanced error handling for execa
-    if (error instanceof Error) {
-      console.error(chalk.red(error.message));
-    }
-
-    throw error;
-  }
-}
+import { buildInstallCommand } from "../utils/buildInstallCommand.js";
+import { installComponents } from "../utils/installComponents.js";
 
 export async function runPresetUI() {
   renderTitle();
@@ -213,7 +164,7 @@ ${chalk.blue(`${command.command} ${command.args.join(" ")}`)}`,
 
   // Actually install the components
   try {
-    await installComponents(finalComponents);
+    await installComponents(finalComponents.map((comp) => comp.value));
     outro(chalk.cyan("Done! Components have been installed successfully."));
   } catch (error) {
     outro(chalk.red("Installation failed. Please check the error above."));
