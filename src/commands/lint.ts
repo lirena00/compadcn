@@ -1,12 +1,10 @@
 import { intro, outro, note } from "@clack/prompts";
 import { log } from "@clack/prompts";
 import chalk from "chalk";
-import { renderTitle } from "../utils/renderTitle.js";
 import { scanForUsedComponents } from "../utils/scanForUsedComponents.js";
 import { getInstalledComponents } from "../utils/getInstalledComponents.js";
 
 export async function runLintUI() {
-  renderTitle();
   intro(chalk.bgMagenta("Component Linter"));
 
   try {

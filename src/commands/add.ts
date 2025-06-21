@@ -9,15 +9,12 @@ import {
 } from "@clack/prompts";
 import { log } from "@clack/prompts";
 import chalk from "chalk";
-import { renderTitle } from "../utils/renderTitle.js";
 import { installComponents } from "../utils/installComponents.js";
 import { allComponents } from "../lib/components.js";
 import { createCustomPresetFlow } from "../utils/createCustomPreset.js";
 import { getInstalledComponents } from "../utils/getInstalledComponents.js";
 
 export async function runAddUI(componentsToAdd?: string[]) {
-  renderTitle();
-
   intro(chalk.bgCyan("Add Components"));
 
   try {
