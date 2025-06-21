@@ -15,7 +15,7 @@ export const allComponents: Component[] = [
   {
     label: "Alert",
     value: "alert",
-    dependencies: ["class-variance-authority"],
+    dependencies: [],
     internal_dependencies: [],
   },
   {
@@ -39,7 +39,7 @@ export const allComponents: Component[] = [
   {
     label: "Badge",
     value: "badge",
-    dependencies: ["class-variance-authority"],
+    dependencies: [],
     internal_dependencies: [],
   },
   {
@@ -51,7 +51,7 @@ export const allComponents: Component[] = [
   {
     label: "Button",
     value: "button",
-    dependencies: ["@radix-ui/react-slot", "class-variance-authority"],
+    dependencies: ["@radix-ui/react-slot"],
     internal_dependencies: [],
   },
   {
@@ -159,10 +159,7 @@ export const allComponents: Component[] = [
   {
     label: "Navigation Menu",
     value: "navigation-menu",
-    dependencies: [
-      "@radix-ui/react-navigation-menu",
-      "class-variance-authority",
-    ],
+    dependencies: ["@radix-ui/react-navigation-menu"],
     internal_dependencies: [],
   },
   {
@@ -222,7 +219,7 @@ export const allComponents: Component[] = [
   {
     label: "Sidebar",
     value: "sidebar",
-    dependencies: ["@radix-ui/react-slot", "class-variance-authority"],
+    dependencies: ["@radix-ui/react-slot"],
     internal_dependencies: [
       "button",
       "input",
@@ -277,13 +274,13 @@ export const allComponents: Component[] = [
   {
     label: "Toggle",
     value: "toggle",
-    dependencies: ["@radix-ui/react-toggle", "class-variance-authority"],
+    dependencies: ["@radix-ui/react-toggle"],
     internal_dependencies: [],
   },
   {
     label: "Toggle Group",
     value: "toggle-group",
-    dependencies: ["@radix-ui/react-toggle-group", "class-variance-authority"],
+    dependencies: ["@radix-ui/react-toggle-group"],
     internal_dependencies: ["toggle"],
   },
   {
