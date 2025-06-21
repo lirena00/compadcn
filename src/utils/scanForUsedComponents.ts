@@ -1,6 +1,7 @@
 import { readFileSync, existsSync, readdirSync, statSync } from "fs";
 import { join } from "path";
 import { spinner } from "@clack/prompts";
+import chalk from "chalk";
 
 export async function scanForUsedComponents(
   installedComponents: string[]
@@ -25,10 +26,10 @@ export async function scanForUsedComponents(
       }
     }
 
-    s.stop("✅ Scan completed");
+    s.stop(chalk.green("Scan completed"));
     return Array.from(usedComponents);
   } catch (error) {
-    s.stop("❌ Scan failed");
+    s.stop(chalk.red("Scan failed"));
     throw error;
   }
 }

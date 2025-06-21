@@ -62,12 +62,12 @@ presetCommand
 
 program
   .command("lint")
-  .description("Initialize a new project with ShadCN components")
+  .description("Find unused ShadCN components")
   .action(runLintUI);
 
 program
   .command("add")
-  .description("Initialize a new project with ShadCN components")
+  .description("Add ShadCN components to your project")
   .argument("[components...]", "Component names to add (e.g., button card)")
   .action((components: string[]) => runAddUI(components));
 

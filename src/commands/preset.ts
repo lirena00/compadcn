@@ -21,7 +21,7 @@ import {
 } from "./presetCommands.js";
 
 export async function runPresetUI() {
-  intro(chalk.cyan.bold(" Preset Manager"));
+  intro(chalk.bgCyan("Preset Manager"));
 
   const action = await select({
     message: "What would you like to do?",
@@ -228,7 +228,6 @@ async function handleCreatePreset() {
       initialValues = preset.components.map((comp) => comp.value);
     }
   }
-
   const selectedComponents = await multiselect({
     message: basePreset
       ? "Select components for your preset (base components are pre-selected)"
@@ -247,10 +246,16 @@ async function handleCreatePreset() {
     return;
   }
 
-  await createPreset(presetName, selectedComponents, {
-    description: description || undefined,
-    base: basePreset || undefined,
-  });
+  try {
+    await createPreset(presetName, selectedComponents, {
+      description: description || undefined,
+      base: basePreset || undefined,
+    });
+    outro(chalk.green("Preset created successfully!"));
+  } catch (error) {
+    console.error(chalk.red("Error creating preset:"), error);
+    outro(chalk.red("Failed to create preset. Please check the error above."));
+  }
 }
 
 async function handleDeletePreset() {

@@ -34,11 +34,8 @@ export async function runLintUI() {
     log.success(
       chalk.green(`${usedComponents.length} components are being used`)
     );
-
     if (unusedComponents.length === 0) {
-      outro(
-        chalk.green("🎉 All components are being used! No cleanup needed.")
-      );
+      outro(chalk.green("All components are being used! No cleanup needed."));
       return;
     }
 
@@ -71,7 +68,7 @@ export async function runLintUI() {
         const { runRemoveUI } = await import("./remove.js");
         await runRemoveUI(unusedComponents);
 
-        outro(chalk.green("✨ Unused components removed successfully!"));
+        outro(chalk.green("Unused components removed successfully!"));
       } catch (removeError) {
         log.error(chalk.red("Error removing components"));
         console.error(removeError);
@@ -92,6 +89,5 @@ export async function runLintUI() {
     log.error(chalk.red("Error during component linting"));
     console.error(error);
     outro(chalk.red("Failed to run component linter."));
-    return;
   }
 }
