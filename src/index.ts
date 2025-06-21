@@ -1,11 +1,10 @@
 #!/usr/bin/env node
 
 import { Command } from "commander";
-import { renderTitle } from "./utils/renderTitle.js";
 import { runPresetUI } from "./commands/preset.js";
 import { runInitUI } from "./commands/init.js";
 import { runLintUI } from "./commands/lint.js";
-
+import { runRemoveUI } from "./commands/remove.js";
 const program = new Command();
 
 program
@@ -28,5 +27,11 @@ program
   .command("init")
   .description("Initialize a new project with ShadCN components")
   .action(runInitUI);
+
+program
+  .command("remove")
+  .description("Remove ShadCN UI components from your project")
+  .argument("[components...]", "Component names to remove (e.g., button card)")
+  .action((components: string[]) => runRemoveUI(components));
 
 program.parse(process.argv);
