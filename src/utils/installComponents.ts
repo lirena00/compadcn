@@ -17,10 +17,9 @@ export const installComponents = async (
     await execa(command, args, {
       cwd: process.cwd(),
     });
-    s.stop("✅ Components installed successfully");
+    s.stop(chalk.green("Components installed successfully"));
   } catch (error) {
-    s.stop("❌ Installation failed");
-    console.error(chalk.red("Error installing components:"));
+    s.stop(chalk.red("Installation failed"));
 
     if (error instanceof Error) {
       console.error(chalk.red(error.message));
