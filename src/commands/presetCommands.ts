@@ -87,11 +87,7 @@ export async function showPreset(presetName: string) {
 
   console.log(chalk.yellow("Components:"));
   preset.components.forEach((component) => {
-    console.log(
-      `  ${chalk.green("•")} ${component.label} ${chalk.gray(
-        `(${component.value})`
-      )}`
-    );
+    console.log(`  ${chalk.green("•")} ${component.label} }`);
   });
 
   console.log();
