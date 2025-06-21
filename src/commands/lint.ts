@@ -1,12 +1,4 @@
-import {
-  intro,
-  outro,
-  multiselect,
-  confirm,
-  cancel,
-  isCancel,
-  note,
-} from "@clack/prompts";
+import { intro, outro, note } from "@clack/prompts";
 import { log } from "@clack/prompts";
 import chalk from "chalk";
 import { renderTitle } from "../utils/renderTitle.js";

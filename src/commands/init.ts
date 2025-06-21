@@ -12,8 +12,8 @@ import { log } from "@clack/prompts";
 import chalk from "chalk";
 import { renderTitle } from "../utils/renderTitle.js";
 import { installComponents } from "../utils/installComponents.js";
-import { allComponents } from "@/lib/components.js";
-import { createCustomPresetFlow } from "@/utils/createCustomPreset.js";
+import { allComponents } from "../lib/components.js";
+import { createCustomPresetFlow } from "../utils/createCustomPreset.js";
 
 export async function runInitUI() {
   renderTitle();
