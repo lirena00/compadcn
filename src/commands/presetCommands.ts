@@ -115,34 +115,89 @@ export async function installPreset(presetName: string) {
 
   console.log(chalk.cyan(`\n Installing preset: ${preset.label}`));
 
-  const componentList = preset.components
-    .map((comp) => `  • ${comp.label}`)
-    .join("\n");
-
-  note(
-    `${chalk.green("Components to install:")}\n${componentList}`,
-    `${preset.label} (${preset.components.length} components)`
-  );
-
-  const confirmInstall = await confirm({
-    message: "Proceed with installation?",
-    initialValue: true,
-  });
-
-  if (isCancel(confirmInstall) || !confirmInstall) {
-    outro(chalk.yellow("Installation cancelled"));
-    return;
-  }
-
   try {
-    await installComponents(preset.components.map((comp) => comp.value));
-    outro(chalk.green(" Preset installed successfully!"));
+    // Check which components are already installed
+    const { getInstalledComponents } = await import(
+      "../utils/getInstalledComponents.js"
+    );
+    const installedComponents = await getInstalledComponents();
+
+    const componentsToInstall = preset.components.map((comp) => comp.value);
+    const alreadyInstalled = componentsToInstall.filter((comp) =>
+      installedComponents.includes(comp)
+    );
+    const componentsToAdd = componentsToInstall.filter(
+      (comp) => !installedComponents.includes(comp)
+    );
+
+    // Show warning for already installed components
+    if (alreadyInstalled.length > 0) {
+      const alreadyInstalledLabels = alreadyInstalled
+        .map((compValue) => {
+          const component = preset.components.find(
+            (comp) => comp.value === compValue
+          );
+          return component?.label || compValue;
+        })
+        .join(", ");
+
+      console.log(
+        chalk.yellow(
+          `Following components are already installed (skipping): ${alreadyInstalledLabels}`
+        )
+      );
+      console.log();
+    }
+
+    // Check if there are any components to install
+    if (componentsToAdd.length === 0) {
+      outro(
+        chalk.yellow("All components from this preset are already installed.")
+      );
+      return;
+    }
+
+    // Show components that will be installed
+    const componentList = componentsToAdd
+      .map((compValue) => {
+        const component = preset.components.find(
+          (comp) => comp.value === compValue
+        );
+        return `  • ${component?.label || compValue}`;
+      })
+      .join("\n");
+
+    note(
+      `${chalk.green("Components to install:")}\n${componentList}`,
+      `${preset.label} (${componentsToAdd.length} of ${preset.components.length} components)`
+    );
+
+    const confirmInstall = await confirm({
+      message: "Proceed with installation?",
+      initialValue: true,
+    });
+
+    if (isCancel(confirmInstall) || !confirmInstall) {
+      outro(chalk.yellow("Installation cancelled"));
+      return;
+    }
+
+    await installComponents(componentsToAdd);
+
+    if (alreadyInstalled.length > 0) {
+      outro(
+        chalk.green(
+          ` Preset installed successfully! (${componentsToAdd.length} new components installed, ${alreadyInstalled.length} already existed)`
+        )
+      );
+    } else {
+      outro(chalk.green(" Preset installed successfully!"));
+    }
   } catch (error) {
     console.error(chalk.red("Installation error:"), error);
     outro(chalk.red("Installation failed. Please check the error above."));
   }
 }
-
 export async function createPreset(
   presetName: string,
   components: string[],
