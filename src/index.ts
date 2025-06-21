@@ -2,7 +2,7 @@
 
 import { Command } from "commander";
 import { runPresetUI } from "./commands/preset.js";
-import { runInitUI } from "./commands/init.js";
+import { runAddUI } from "./commands/add.js";
 import { runLintUI } from "./commands/lint.js";
 import { runRemoveUI } from "./commands/remove.js";
 const program = new Command();
@@ -24,9 +24,10 @@ program
   .action(runLintUI);
 
 program
-  .command("init")
+  .command("add")
   .description("Initialize a new project with ShadCN components")
-  .action(runInitUI);
+  .argument("[components...]", "Component names to add (e.g., button card)")
+  .action((components: string[]) => runAddUI(components));
 
 program
   .command("remove")
