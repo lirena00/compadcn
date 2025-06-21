@@ -20,7 +20,7 @@ export const presets: PresetsData = {
   presets: {
     core: {
       label: "Core Components",
-      description: "Essential UI elements for any project",
+      description: "Essential UI building blocks",
       components: findComponents([
         "button",
         "input",
@@ -32,7 +32,7 @@ export const presets: PresetsData = {
     },
     form: {
       label: "Form Components",
-      description: "Form controls and validation components",
+      description: "Input controls and form elements",
       components: findComponents([
         "form",
         "checkbox",
@@ -47,7 +47,7 @@ export const presets: PresetsData = {
     },
     navigation: {
       label: "Navigation",
-      description: "Navigation and menu components",
+      description: "Menus and navigation elements",
       components: findComponents([
         "breadcrumb",
         "dropdown-menu",
@@ -60,7 +60,7 @@ export const presets: PresetsData = {
     },
     layout: {
       label: "Layout",
-      description: "Layout and structure components",
+      description: "Structure and layout components",
       components: findComponents([
         "accordion",
         "collapsible",
@@ -73,7 +73,7 @@ export const presets: PresetsData = {
     },
     feedback: {
       label: "Feedback",
-      description: "User feedback and notification components",
+      description: "Alerts and user notifications",
       components: findComponents([
         "alert",
         "alert-dialog",
@@ -85,7 +85,7 @@ export const presets: PresetsData = {
     },
     dataDisplay: {
       label: "Data Display",
-      description: "Tables, charts, and data visualization components",
+      description: "Tables and data visualization",
       components: findComponents([
         "avatar",
         "badge",
@@ -108,7 +108,7 @@ export const presets: PresetsData = {
     },
     mobile: {
       label: "Mobile First Components",
-      description: "Components optimized for mobile experiences",
+      description: "Mobile-optimized UI components",
       components: findComponents([
         "button",
         "input",
@@ -125,8 +125,7 @@ export const presets: PresetsData = {
     },
     dashboard: {
       label: "Dashboard Kit",
-      description:
-        "Perfect for building admin dashboards and data-heavy interfaces",
+      description: "Admin dashboard components",
       components: findComponents([
         "card",
         "table",
