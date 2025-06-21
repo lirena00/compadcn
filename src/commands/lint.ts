@@ -1,5 +1,5 @@
-import { intro, outro, note } from "@clack/prompts";
-import { log } from "@clack/prompts";
+import { intro, outro, note, log, confirm, isCancel } from "@clack/prompts";
+
 import chalk from "chalk";
 import { scanForUsedComponents } from "../utils/scanForUsedComponents.js";
 import { getInstalledComponents } from "../utils/getInstalledComponents.js";
@@ -46,20 +46,48 @@ export async function runLintUI() {
       chalk.yellow(`${unusedComponents.length} unused components found`)
     );
 
-    // Show unused components in a note
     note(
       unusedComponents.map((component) => `• ${component}`).join("\n"),
       chalk.yellow("Unused Components")
     );
 
-    // Show removal command
     const removeCommand = `compadcn remove ${unusedComponents.join(" ")}`;
-    note(
-      chalk.cyan(removeCommand),
-      "Run this command to remove unused components"
-    );
+    note(chalk.cyan(removeCommand), "Command to remove unused components");
 
-    outro(chalk.blue("Component linting complete"));
+    const shouldRemove = await confirm({
+      message: "Would you like to remove these unused components now?",
+      initialValue: false,
+    });
+
+    if (isCancel(shouldRemove)) {
+      outro(chalk.yellow("Linting cancelled"));
+      return;
+    }
+
+    if (shouldRemove) {
+      log.step("Removing unused components...");
+
+      try {
+        const { runRemoveUI } = await import("./remove.js");
+        await runRemoveUI(unusedComponents);
+
+        outro(chalk.green("✨ Unused components removed successfully!"));
+      } catch (removeError) {
+        log.error(chalk.red("Error removing components"));
+        console.error(removeError);
+        outro(
+          chalk.red(
+            "Failed to remove components. You can run the command manually."
+          )
+        );
+      }
+    } else {
+      outro(
+        chalk.blue(
+          "Component linting complete. Run the command above when ready."
+        )
+      );
+    }
   } catch (error) {
     log.error(chalk.red("Error during component linting"));
     console.error(error);
