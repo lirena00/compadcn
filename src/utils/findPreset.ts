@@ -1,5 +1,5 @@
 import { presets, type Preset } from "../lib/presets_config.js";
-import { loadCustomPresets } from "./presetStorage";
+import { loadCustomPresets } from "./presetStorage.js";
 
 export async function findPreset(
   presetName: string
