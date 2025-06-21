@@ -1,10 +1,10 @@
 import { text, multiselect, isCancel, note } from "@clack/prompts";
 import chalk from "chalk";
 import { saveCustomPreset } from "./presetStorage.js";
-import { allComponents } from "@/lib/components.js";
+import { allComponents } from "../lib/components.js";
 
 export const createCustomPresetFlow = async (
-  selectedComponents: string[]
+  selectedComponents?: string[]
 ): Promise<string | null> => {
   const presetName = await text({
     message: "Enter a name for your preset:",
@@ -24,7 +24,6 @@ export const createCustomPresetFlow = async (
     return null;
   }
 
-  // Get preset description
   const presetDescription = await text({
     message: "Enter a description for your preset:",
     placeholder: "A collection of components for...",
@@ -40,17 +39,14 @@ export const createCustomPresetFlow = async (
     return null;
   }
 
-  // Generate a unique ID
   const presetId = `custom_${Date.now()}_${Math.random()
     .toString(36)
     .substr(2, 9)}`;
 
-  // Get component objects for the selected values
   const componentObjects = allComponents.filter((comp) =>
     selectedComponents!.includes(comp.value)
   );
 
-  // Save the preset
   try {
     saveCustomPreset(
       presetId,

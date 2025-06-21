@@ -8,7 +8,6 @@ import {
 } from "@clack/prompts";
 import { log } from "@clack/prompts";
 import chalk from "chalk";
-import { renderTitle } from "../utils/renderTitle.js";
 import { getInstalledComponents } from "../utils/getInstalledComponents.js";
 import { removeComponents } from "../utils/removeComponents.js";
 import { removeImportsFromFiles } from "../utils/removeImports.js";
@@ -16,7 +15,6 @@ import { removeDependencies } from "../utils/removeDependencies.js";
 import { allComponents } from "../lib/components.js";
 
 export async function runRemoveUI(componentsToRemove?: string[]) {
-  renderTitle();
   intro(chalk.bgRed("Remove Components"));
 
   try {

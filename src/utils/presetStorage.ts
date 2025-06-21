@@ -41,7 +41,12 @@ export const saveCustomPreset = (
   id: string,
   label: string,
   description: string,
-  components: Array<{ label: string; value: string }>
+  components: Array<{
+    label: string;
+    value: string;
+    dependencies?: string[];
+    internal_dependencies?: string[];
+  }>
 ): void => {
   ensureConfigDir();
 
@@ -51,7 +56,11 @@ export const saveCustomPreset = (
     id,
     label,
     description,
-    components,
+    components: components.map((comp) => ({
+      ...comp,
+      dependencies: comp.dependencies || [],
+      internal_dependencies: comp.internal_dependencies || [],
+    })),
     createdAt: new Date().toISOString(),
   };
 

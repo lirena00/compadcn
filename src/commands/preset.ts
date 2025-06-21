@@ -1,173 +1,280 @@
-// src/commands/preset.ts
-
 import {
   intro,
   outro,
-  spinner,
-  multiselect,
   select,
+  text,
+  multiselect,
   confirm,
   isCancel,
   note,
 } from "@clack/prompts";
 import chalk from "chalk";
-import { renderTitle } from "../utils/renderTitle.js";
+import { loadCustomPresets } from "../utils/presetStorage.js";
+import { getAllPresets } from "../utils/getAllPresets.js";
+
 import {
-  getUserPkgManager,
-  type PackageManager,
-} from "../utils/getUserPkgManager.js";
-import { execa } from "execa";
-import {
-  presets,
-  type Component,
-  type Preset,
-  type PresetsData,
-} from "../lib/presets_config.js";
-import { buildInstallCommand } from "../utils/buildInstallCommand.js";
-import { installComponents } from "../utils/installComponents.js";
+  listPresets,
+  showPreset,
+  installPreset,
+  createPreset,
+  deletePreset,
+} from "./presetCommands.js";
 
 export async function runPresetUI() {
-  renderTitle();
+  intro(chalk.cyan.bold(" Preset Manager"));
 
-  const presetsData = presets as PresetsData;
+  const action = await select({
+    message: "What would you like to do?",
+    options: [
+      {
+        value: "install",
+        label: "Install a preset",
+      },
+      {
+        value: "list",
+        label: "List all presets",
+      },
+      {
+        value: "show",
+        label: "Show preset details",
+      },
+      {
+        value: "create",
+        label: "Create custom preset",
+      },
+      {
+        value: "delete",
+        label: "Delete custom preset",
+      },
+    ],
+  });
 
-  // First, let user choose a preset
+  if (isCancel(action)) {
+    outro(chalk.yellow("Operation cancelled"));
+    return;
+  }
+
+  switch (action) {
+    case "install":
+      await handleInstallPreset();
+      break;
+    case "list":
+      await handleListPresets();
+      break;
+    case "show":
+      await handleShowPreset();
+      break;
+    case "create":
+      await handleCreatePreset();
+      break;
+    case "delete":
+      await handleDeletePreset();
+      break;
+  }
+}
+
+async function handleInstallPreset() {
+  const allPresets = await getAllPresets();
+
   const selectedPreset = await select({
-    message: "Choose a preset to install:",
-    options: Object.entries(presetsData.presets).map(([key, preset]) => ({
-      label: preset.label,
-      value: key,
+    message: "Which preset would you like to install?",
+    options: allPresets.map((preset) => ({
+      value: preset.id,
+      label: `${preset.label} ${
+        preset.isCustom ? chalk.cyan("(custom)") : chalk.green("(builtin)")
+      }`,
+      hint: `${preset.description} • ${preset.components.length} components`,
+    })),
+  });
+
+  if (isCancel(selectedPreset)) {
+    outro(chalk.yellow("Installation cancelled"));
+    return;
+  }
+
+  await installPreset(selectedPreset);
+}
+
+async function handleListPresets() {
+  const filterType = await select({
+    message: "Which presets would you like to see?",
+    options: [
+      {
+        value: "all",
+        label: "All presets",
+        hint: "Show both builtin and custom",
+      },
+      {
+        value: "builtin",
+        label: "Builtin presets only",
+        hint: "Show only builtin presets",
+      },
+      {
+        value: "custom",
+        label: "Custom presets only",
+        hint: "Show only your custom presets",
+      },
+    ],
+  });
+
+  if (isCancel(filterType)) {
+    outro(chalk.yellow("Operation cancelled"));
+    return;
+  }
+
+  const options: any = {};
+  if (filterType === "builtin") options.builtin = true;
+  if (filterType === "custom") options.custom = true;
+
+  await listPresets(options);
+}
+
+async function handleShowPreset() {
+  const allPresets = await getAllPresets();
+
+  const selectedPreset = await select({
+    message: "Which preset would you like to view?",
+    options: allPresets.map((preset) => ({
+      value: preset.id,
+      label: `${preset.label} ${
+        preset.isCustom ? chalk.cyan("(custom)") : chalk.green("(builtin)")
+      }`,
       hint: preset.description,
     })),
   });
 
   if (isCancel(selectedPreset)) {
-    outro(chalk.yellow("Cancelled"));
-    process.exit(0);
-  }
-
-  const preset = presetsData.presets[selectedPreset as string] as Preset;
-
-  // Check if preset has components
-  if (preset?.components.length === 0) {
-    note(
-      chalk.yellow("This preset doesn't have any components yet."),
-      "Empty preset"
-    );
-    outro(
-      chalk.yellow("Please choose a different preset or use custom install.")
-    );
+    outro(chalk.yellow("Operation cancelled"));
     return;
   }
 
-  // Show user what components will be installed
-  const componentList = preset.components
-    .map((comp) => `  • ${comp.label}`)
-    .join("\n");
+  await showPreset(selectedPreset);
+}
 
-  note(
-    `${chalk.cyan("Components to be installed:")}\n${componentList}`,
-    `${preset?.label} (${preset?.components.length} components)`
-  );
+async function handleCreatePreset() {
+  const presetName = await text({
+    message: "What should we call your preset?",
+    placeholder: "my-awesome-preset",
+    validate: (value) => {
+      if (!value) return "Preset name is required";
+      if (value.length < 3) return "Preset name must be at least 3 characters";
+      if (!/^[a-zA-Z0-9-_\s]+$/.test(value))
+        return "Only letters, numbers, hyphens, underscores, and spaces allowed";
+      return;
+    },
+  });
 
-  // Ask if they want to edit the preset
-  const wantToEdit = await confirm({
-    message: "Would you like to customize this preset?",
+  if (isCancel(presetName)) {
+    outro(chalk.yellow("Creation cancelled"));
+    return;
+  }
+
+  // Ask if they want to base it on an existing preset
+  const useBase = await confirm({
+    message: "Do you want to base this on an existing preset?",
     initialValue: false,
   });
 
-  if (isCancel(wantToEdit)) {
-    outro(chalk.yellow("Cancelled"));
-    process.exit(0);
-  }
-
-  let finalComponents = preset?.components;
-
-  if (wantToEdit) {
-    // Only show components from the selected preset, all pre-selected
-    const preSelectedValues = preset.components.map((comp) => comp.value);
-
-    const customComponents = await multiselect({
-      message: `Customize your component selection:
-${chalk.gray(
-  "Use [arrows] to navigate, [space] to toggle, [a] to toggle all, [enter] to confirm"
-)}`,
-      options: preset?.components.map((comp) => ({
-        label: comp.label,
-        value: comp.value,
-      })),
-      initialValues: preSelectedValues,
-    });
-
-    if (isCancel(customComponents)) {
-      outro(chalk.yellow("Cancelled"));
-      process.exit(0);
-    }
-
-    // Filter to only include selected components
-    finalComponents = preset.components.filter((comp) =>
-      (customComponents as string[]).includes(comp.value)
-    );
-  }
-
-  // Check if any components are selected
-  if (finalComponents.length === 0) {
-    outro(chalk.yellow("No components selected. Installation cancelled."));
+  if (isCancel(useBase)) {
+    outro(chalk.yellow("Creation cancelled"));
     return;
   }
 
-  // Final confirmation with updated component list
-  const finalComponentList = finalComponents
-    .map((comp) => `  • ${comp.label}`)
-    .join("\n");
+  let basePreset = null;
+  if (useBase) {
+    const allPresets = await import("../utils/getAllPresets.js").then((m) =>
+      m.getAllPresets()
+    );
 
-  const packageManager = getUserPkgManager();
-  const componentValues = finalComponents.map((comp) => comp.value);
-  const command = buildInstallCommand(packageManager, componentValues);
-
-  note(
-    `${chalk.green("Final selection:")}\n${finalComponentList}
-
-${chalk.gray("Command to be executed:")}
-${chalk.blue(`${command.command} ${command.args.join(" ")}`)}`,
-    `Installing ${finalComponents.length} components with ${packageManager}`
-  );
-
-  const confirmInstall = await confirm({
-    message: "Proceed with installation?",
-    initialValue: true,
-  });
-
-  if (isCancel(confirmInstall) || !confirmInstall) {
-    outro(chalk.yellow("Cancelled"));
-    process.exit(0);
-  }
-
-  // Ask if they want to save this as a new preset (if they edited and removed some components)
-  if (wantToEdit && finalComponents.length !== preset?.components.length) {
-    const saveAsPreset = await confirm({
-      message:
-        "Would you like to save this customized selection as a new preset?",
-      initialValue: false,
+    const selectedBase = await select({
+      message: "Which preset should we use as the base?",
+      options: allPresets.map((preset) => ({
+        value: preset.id,
+        label: `${preset.label} ${
+          preset.isCustom ? chalk.cyan("(custom)") : chalk.green("(builtin)")
+        }`,
+        hint: `${preset.description} • ${preset.components.length} components`,
+      })),
     });
 
-    if (isCancel(saveAsPreset)) {
-      outro(chalk.yellow("Cancelled"));
-      process.exit(0);
+    if (isCancel(selectedBase)) {
+      outro(chalk.yellow("Creation cancelled"));
+      return;
     }
 
-    if (saveAsPreset) {
-      // TODO: save components to a config file
-      console.log(chalk.green("Custom preset saved! (not really, yet)"));
+    basePreset = selectedBase;
+  }
+
+  const description = await text({
+    message: "Add a description (optional)",
+    placeholder: basePreset
+      ? `A preset based on ${basePreset}`
+      : "A preset for my project components",
+  });
+
+  if (isCancel(description)) {
+    outro(chalk.yellow("Creation cancelled"));
+    return;
+  }
+
+  const { allComponents } = await import("../lib/components.js");
+
+  // Get base components if a base preset was selected
+  let initialValues: string[] = [];
+  if (basePreset) {
+    const { findPreset } = await import("../utils/findPreset.js");
+    const preset = await findPreset(basePreset);
+    if (preset) {
+      initialValues = preset.components.map((comp) => comp.value);
     }
   }
 
-  // Actually install the components
-  try {
-    await installComponents(finalComponents.map((comp) => comp.value));
-    outro(chalk.cyan("Done! Components have been installed successfully."));
-  } catch (error) {
-    outro(chalk.red("Installation failed. Please check the error above."));
-    process.exit(1);
+  const selectedComponents = await multiselect({
+    message: basePreset
+      ? "Select components for your preset (base components are pre-selected)"
+      : "Select components for your preset",
+    options: allComponents.map((comp) => ({
+      value: comp.value,
+      label: comp.label,
+      hint: comp.value,
+    })),
+    required: true,
+    initialValues,
+  });
+
+  if (isCancel(selectedComponents)) {
+    outro(chalk.yellow("Creation cancelled"));
+    return;
   }
+
+  await createPreset(presetName, selectedComponents, {
+    description: description || undefined,
+    base: basePreset || undefined,
+  });
+}
+
+async function handleDeletePreset() {
+  const customPresets = loadCustomPresets();
+  const customPresetEntries = Object.entries(customPresets.presets);
+
+  if (customPresetEntries.length === 0) {
+    outro(chalk.yellow("No custom presets found to delete"));
+    return;
+  }
+
+  const selectedPreset = await select({
+    message: "Which custom preset would you like to delete?",
+    options: customPresetEntries.map(([id, preset]) => ({
+      value: id,
+      label: preset.label,
+      hint: `${preset.description} • ${preset.components.length} components`,
+    })),
+  });
+
+  if (isCancel(selectedPreset)) {
+    outro(chalk.yellow("Deletion cancelled"));
+    return;
+  }
+
+  await deletePreset(selectedPreset);
 }
