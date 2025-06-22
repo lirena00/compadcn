@@ -1,6 +1,6 @@
 {
   "name": "compadcn",
-  "version": "0.3.0",
+  "version": "0.9.0",
   "description": "CLI for installing and managing ShadCN UI components",
   "type": "module",
   "main": "index.js",
