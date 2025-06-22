@@ -11,7 +11,6 @@ import { log } from "@clack/prompts";
 import chalk from "chalk";
 import { installComponents } from "../utils/installComponents.js";
 import { allComponents } from "../lib/components.js";
-import { createCustomPresetFlow } from "../utils/createCustomPreset.js";
 import { getInstalledComponents } from "../utils/getInstalledComponents.js";
 
 export async function runAddUI(componentsToAdd?: string[]) {
@@ -108,30 +107,6 @@ ${chalk.gray(
       .join("\n");
 
     note(`${chalk.green("Components to be installed:")}\n${componentLabels}`);
-
-    const saveAsPreset = await confirm({
-      message: "Would you like to save this selection as a preset?",
-      initialValue: false,
-    });
-
-    if (isCancel(saveAsPreset)) {
-      cancel(chalk.red("Cancelled"));
-      return;
-    }
-
-    try {
-      if (saveAsPreset) {
-        const presetId = await createCustomPresetFlow(finalComponentsToAdd);
-        if (presetId) {
-          log.success(chalk.green("Preset saved successfully!"));
-        } else {
-          log.error(chalk.yellow("Preset creation cancelled or failed."));
-        }
-      }
-    } catch (error) {
-      log.error(chalk.red("Failed to create preset. Please try again."));
-      return;
-    }
 
     const confirmInstall = await confirm({
       message: "Proceed with installation?",
