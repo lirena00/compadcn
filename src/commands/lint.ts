@@ -48,9 +48,6 @@ export async function runLintUI() {
       chalk.yellow("Unused Components")
     );
 
-    const removeCommand = `compadcn remove ${unusedComponents.join(" ")}`;
-    note(chalk.cyan(removeCommand), "Command to remove unused components");
-
     const shouldRemove = await confirm({
       message: "Would you like to remove these unused components now?",
       initialValue: false,
@@ -67,8 +64,6 @@ export async function runLintUI() {
       try {
         const { runRemoveUI } = await import("./remove.js");
         await runRemoveUI(unusedComponents);
-
-        outro(chalk.green("Unused components removed successfully!"));
       } catch (removeError) {
         log.error(chalk.red("Error removing components"));
         console.error(removeError);
@@ -79,6 +74,9 @@ export async function runLintUI() {
         );
       }
     } else {
+      const removeCommand = `compadcn remove ${unusedComponents.join(" ")}`;
+      note(chalk.cyan(removeCommand), "Command to remove unused components");
+
       outro(
         chalk.blue(
           "Component linting complete. Run the command above when ready."
