@@ -120,7 +120,8 @@ ${chalk.gray(
     );
 
     const dependenciesToRemove = getDependenciesForComponents(
-      finalComponentsToRemove
+      finalComponentsToRemove,
+      installedComponents
     );
     let selectedDependencies = [] as string[];
 
@@ -191,17 +192,42 @@ ${chalk.gray(
   }
 }
 
-function getDependenciesForComponents(componentNames: string[]): string[] {
+function getDependenciesForComponents(
+  componentNames: string[],
+  installedComponents: string[]
+): string[] {
+  const dependenciesToRemove = new Set<string>();
   const allDependencies = new Set<string>();
 
+  // First, collect all dependencies from components being removed
   componentNames.forEach((componentName) => {
     const component = allComponents.find((c) => c.value === componentName);
     if (component) {
-      component.dependencies.forEach((dep) => allDependencies.add(dep));
+      component.dependencies.forEach((dep) => {
+        allDependencies.add(dep);
+        dependenciesToRemove.add(dep);
+      });
     }
   });
 
-  return Array.from(allDependencies);
+  // Then, check if any of these dependencies are also used by components that are NOT being removed
+  const remainingComponents = installedComponents.filter(
+    (comp) => !componentNames.includes(comp)
+  );
+
+  remainingComponents.forEach((componentName) => {
+    const component = allComponents.find((c) => c.value === componentName);
+    if (component) {
+      component.dependencies.forEach((dep) => {
+        if (dependenciesToRemove.has(dep)) {
+          // This dependency is used by a component that's staying, so don't remove it
+          dependenciesToRemove.delete(dep);
+        }
+      });
+    }
+  });
+
+  return Array.from(dependenciesToRemove);
 }
 
 interface ConflictResult {
