@@ -15,6 +15,6 @@ export const buildInstallCommand = (
       return { command: "bunx", args: ["--bun", ...baseArgs] };
     case "npm":
     default:
-      return { command: "npx", args: baseArgs };
+      return { command: "npx", args: ["--yes", ...baseArgs] };
   }
 };
