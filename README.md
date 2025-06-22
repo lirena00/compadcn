@@ -97,7 +97,8 @@ compadcn preset install mobile
 # Create a custom preset
 compadcn preset create "my-preset" button card input
 compadcn preset create "my-preset" --description "My custom components"
-compadcn preset create "my-preset" --base core  # Extend existing preset
+compadcn preset create "my-preset" --base core,form  # Extend multiple existing presets
+compadcn preset create "dashboard-mobile" --base dashboard,mobile --description "Mobile dashboard components"
 
 # Delete a custom preset
 compadcn preset delete "my-preset"

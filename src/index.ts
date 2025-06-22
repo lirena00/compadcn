@@ -56,10 +56,14 @@ presetCommand
   .alias("c")
   .description("Create a new custom preset")
   .option("-d, --description <description>", "Preset description")
-  .option("-b, --base <preset_name>", "Base preset to extend from")
+  .option(
+    "-b, --base <preset_names>",
+    "Base presets to extend from (comma-separated)"
+  )
   .action((presetName, components, options) =>
     createPreset(presetName, components, options)
   );
+
 presetCommand
   .command("delete <preset_name>")
   .alias("del")

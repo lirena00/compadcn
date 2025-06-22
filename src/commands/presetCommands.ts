@@ -213,16 +213,28 @@ export async function createPreset(
   }
 
   let baseComponents: string[] = [];
+  let basePresetNames: string[] = [];
   if (options.base) {
-    const basePreset = await findPreset(options.base);
-    if (!basePreset) {
-      outro(chalk.red(`Base preset "${options.base}" not found.`));
-      return;
+    // Support multiple base presets separated by comma
+    const baseNames = options.base.split(",").map((name) => name.trim());
+
+    for (const baseName of baseNames) {
+      const basePreset = await findPreset(baseName);
+      if (!basePreset) {
+        outro(chalk.red(`Base preset "${baseName}" not found.`));
+        return;
+      }
+
+      const newComponents = basePreset.components.map((comp) => comp.value);
+      baseComponents = [...new Set([...baseComponents, ...newComponents])];
+      basePresetNames.push(basePreset.label);
     }
-    baseComponents = basePreset.components.map((comp) => comp.value);
+
     console.log(
       chalk.cyan(
-        `Using "${basePreset.label}" as base (${baseComponents.length} components)`
+        `Using base presets: ${basePresetNames.join(", ")} (${
+          baseComponents.length
+        } unique components)`
       )
     );
   }
@@ -307,7 +319,7 @@ export async function createPreset(
     console.log(chalk.gray(`   Components: ${componentObjects.length}`));
     console.log(chalk.gray(`   Description: ${description}`));
     if (options.base) {
-      console.log(chalk.gray(`   Based on: ${options.base}`));
+      console.log(chalk.gray(`   Based on: ${basePresetNames.join(", ")}`));
     }
     console.log();
   } catch (error) {

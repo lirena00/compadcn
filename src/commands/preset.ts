@@ -180,13 +180,13 @@ async function handleCreatePreset() {
     return;
   }
 
-  let basePreset = null;
+  let basePresets: string[] = [];
   if (useBase) {
     const allPresets = await import("../utils/getAllPresets.js").then((m) =>
       m.getAllPresets()
     );
 
-    const selectedBase = await select({
+    const selectedBases = await multiselect({
       message: "Which preset should we use as the base?",
       options: allPresets.map((preset) => ({
         value: preset.id,
@@ -195,21 +195,23 @@ async function handleCreatePreset() {
         }`,
         hint: `${preset.description} • ${preset.components.length} components`,
       })),
+      required: true,
     });
 
-    if (isCancel(selectedBase)) {
+    if (isCancel(selectedBases)) {
       outro(chalk.yellow("Creation cancelled"));
       return;
     }
 
-    basePreset = selectedBase;
+    basePresets = selectedBases as string[];
   }
 
   const description = await text({
     message: "Add a description (optional)",
-    placeholder: basePreset
-      ? `A preset based on ${basePreset}`
-      : "A preset for my project components",
+    placeholder:
+      basePresets.length > 0
+        ? `A preset based on ${basePresets.join(", ")}`
+        : "A preset for my project components",
   });
 
   if (isCancel(description)) {
@@ -219,19 +221,25 @@ async function handleCreatePreset() {
 
   const { allComponents } = await import("../lib/components.js");
 
-  // Get base components if a base preset was selected
+  // Get base components if base presets were selected
   let initialValues: string[] = [];
-  if (basePreset) {
+  if (basePresets.length > 0) {
     const { findPreset } = await import("../utils/findPreset.js");
-    const preset = await findPreset(basePreset);
-    if (preset) {
-      initialValues = preset.components.map((comp) => comp.value);
+
+    for (const basePresetId of basePresets) {
+      const preset = await findPreset(basePresetId);
+      if (preset) {
+        const baseComponents = preset.components.map((comp) => comp.value);
+        initialValues = [...new Set([...initialValues, ...baseComponents])];
+      }
     }
   }
+
   const selectedComponents = await multiselect({
-    message: basePreset
-      ? "Select components for your preset (base components are pre-selected)"
-      : "Select components for your preset",
+    message:
+      basePresets.length > 0
+        ? "Select components for your preset (base components are pre-selected)"
+        : "Select components for your preset",
     options: allComponents.map((comp) => ({
       value: comp.value,
       label: comp.label,
@@ -249,7 +257,7 @@ async function handleCreatePreset() {
   try {
     await createPreset(presetName, selectedComponents, {
       description: description || undefined,
-      base: basePreset || undefined,
+      base: basePresets.length > 0 ? basePresets.join(",") : undefined,
     });
     outro(chalk.green("Preset created successfully!"));
   } catch (error) {
