@@ -27,11 +27,13 @@ program.hook("preAction", () => {
 
 const presetCommand = program
   .command("preset")
-  .description("manage component presets");
+  .alias("p")
+  .description("Manage component presets");
 presetCommand.action(runPresetUI);
 
 presetCommand
   .command("list")
+  .alias("ls")
   .description("List all available presets")
   .option("--builtin", "Show only builtin presets")
   .option("--custom", "Show only custom presets")
@@ -39,16 +41,19 @@ presetCommand
 
 presetCommand
   .command("show <preset_name>")
+  .alias("s")
   .description("Show components in a preset")
   .action((presetName) => showPreset(presetName));
 
 presetCommand
   .command("install <preset_name>")
+  .alias("i")
   .description("Install all components from a preset")
   .action((presetName) => installPreset(presetName));
 
 presetCommand
   .command("create <preset_name> [components...]")
+  .alias("c")
   .description("Create a new custom preset")
   .option("-d, --description <description>", "Preset description")
   .option("-b, --base <preset_name>", "Base preset to extend from")
@@ -57,22 +62,26 @@ presetCommand
   );
 presetCommand
   .command("delete <preset_name>")
+  .alias("del")
   .description("Delete a custom preset")
   .action((presetName) => deletePreset(presetName));
 
 program
   .command("lint")
+  .alias("l")
   .description("Find unused ShadCN components")
   .action(runLintUI);
 
 program
   .command("add")
+  .alias("a")
   .description("Add ShadCN components to your project")
   .argument("[components...]", "Component names to add (e.g., button card)")
   .action((components: string[]) => runAddUI(components));
 
 program
   .command("remove")
+  .alias("rm")
   .description("Remove ShadCN UI components from your project")
   .argument("[components...]", "Component names to remove (e.g., button card)")
   .action((components: string[]) => runRemoveUI(components));
