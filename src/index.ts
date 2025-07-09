@@ -35,8 +35,8 @@ presetCommand
   .command("list")
   .alias("ls")
   .description("List all available presets")
-  .option("--builtin", "Show only builtin presets")
-  .option("--custom", "Show only custom presets")
+  .option("-b", "--builtin", "Show only builtin presets")
+  .option("-c", "--custom", "Show only custom presets")
   .action((options) => listPresets(options));
 
 presetCommand
