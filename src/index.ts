@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { Command } from "commander";
+import { Command, Option } from "commander";
 import { renderTitle } from "./utils/renderTitle.js";
 import { runPresetUI } from "./commands/preset.js";
 import { runAddUI } from "./commands/add.js";
@@ -79,9 +79,10 @@ program
 program
   .command("add")
   .alias("a")
+  .option("-o, --overwrite", "Overwrite existing files")
   .description("Add ShadCN components to your project")
   .argument("[components...]", "Component names to add (e.g., button card)")
-  .action((components: string[]) => runAddUI(components));
+  .action((components: string[], options) => runAddUI(components, options));
 
 program
   .command("remove")
