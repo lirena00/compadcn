@@ -8,12 +8,15 @@ type PackageManager = "npm" | "pnpm" | "yarn" | "bun";
 const buildInstallCommand = (
   packageManager: PackageManager,
   components: string[],
-  options?: { overwrite?: boolean }
+  options?: { overwrite?: boolean; cssVariables?: boolean }
 ): { command: string; args: string[] } => {
   const baseArgs = ["shadcn@latest", "add", ...components];
 
   if (options?.overwrite) {
     baseArgs.push("--overwrite");
+  }
+  if (options?.cssVariables === false) {
+    baseArgs.push("--no-css-variables");
   }
 
   baseArgs.push(...components);
@@ -33,7 +36,7 @@ const buildInstallCommand = (
 
 export const installComponents = async (
   components: string[],
-  options?: { overwrite?: boolean }
+  options?: { overwrite?: boolean; cssVariables?: boolean }
 ): Promise<void> => {
   const packageManager = getUserPkgManager();
   const { command, args } = buildInstallCommand(

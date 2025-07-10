@@ -29,6 +29,7 @@ const presetCommand = program
   .command("preset")
   .alias("p")
   .description("Manage component presets");
+
 presetCommand.action(runPresetUI);
 
 presetCommand
@@ -37,7 +38,7 @@ presetCommand
   .description("List all available presets")
   .option("-b", "--builtin", "Show only builtin presets")
   .option("-c", "--custom", "Show only custom presets")
-  .action((options) => listPresets(options));
+  .action(listPresets);
 
 presetCommand
   .command("show <preset_name>")
@@ -80,6 +81,8 @@ program
   .command("add")
   .alias("a")
   .option("-o, --overwrite", "Overwrite existing files")
+  .option("--css-variables", "Use CSS variables for theming (default)")
+  .option("--no-css-variables", "do not use css variables for theming")
   .description("Add ShadCN components to your project")
   .argument("[components...]", "Component names to add (e.g., button card)")
   .action((components: string[], options) => runAddUI(components, options));
