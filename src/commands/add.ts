@@ -13,12 +13,27 @@ import { installComponents } from "../utils/installComponents.js";
 import { allComponents } from "../lib/components.js";
 import { getInstalledComponents } from "../utils/getInstalledComponents.js";
 
-export async function runAddUI(componentsToAdd?: string[]) {
+export async function runAddUI(
+  componentsToAdd?: string[],
+  options?: { overwrite?: boolean; cssVariables?: boolean }
+) {
   intro(chalk.bgCyan("Add Components"));
 
   try {
-    log.step("Checking installed components...");
-    const installedComponents = await getInstalledComponents();
+    let installedComponents: string[] = [];
+    if (options?.overwrite) {
+      log.step("Overwrite mode enabled. Existing files will be replaced.");
+      installedComponents = allComponents.map((comp) => comp.value);
+    } else {
+      log.step("Checking installed components...");
+      installedComponents = await getInstalledComponents();
+    }
+
+    if (options?.cssVariables === false) {
+      log.step(
+        "Using CSS variables for theming is disabled. Components will not use CSS variables."
+      );
+    }
 
     let finalComponentsToAdd: string[] = [];
 
@@ -43,7 +58,7 @@ export async function runAddUI(componentsToAdd?: string[]) {
         installedComponents.includes(comp)
       );
 
-      if (alreadyInstalled.length > 0) {
+      if (alreadyInstalled.length > 0 && !options?.overwrite) {
         log.info(
           chalk.yellow(
             `Following components are already installed (skipping): ${alreadyInstalled.join(
@@ -53,18 +68,20 @@ export async function runAddUI(componentsToAdd?: string[]) {
         );
       }
 
-      finalComponentsToAdd = componentsToAdd.filter(
-        (comp) => !installedComponents.includes(comp)
-      );
+      finalComponentsToAdd = options?.overwrite
+        ? componentsToAdd
+        : componentsToAdd.filter((comp) => !installedComponents.includes(comp));
 
       if (finalComponentsToAdd.length === 0) {
         outro(chalk.yellow("All specified components are already installed."));
         return;
       }
     } else {
-      const availableComponents = allComponents.filter(
-        (comp) => !installedComponents.includes(comp.value)
-      );
+      const availableComponents = options?.overwrite
+        ? allComponents
+        : allComponents.filter(
+            (comp) => !installedComponents.includes(comp.value)
+          );
 
       if (availableComponents.length === 0) {
         outro(chalk.yellow("All ShadCN components are already installed."));
@@ -118,7 +135,7 @@ ${chalk.gray(
       return;
     }
 
-    await installComponents(finalComponentsToAdd);
+    await installComponents(finalComponentsToAdd, options);
     outro(chalk.cyan("Done! Components have been installed successfully."));
   } catch (error) {
     log.error(chalk.red("Error during component installation"));

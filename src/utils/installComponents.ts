@@ -1,14 +1,49 @@
 import { execa } from "execa";
 import { spinner } from "@clack/prompts";
 import chalk from "chalk";
-import { buildInstallCommand } from "./buildInstallCommand.js";
 import { getUserPkgManager } from "./getUserPkgManager.js";
 
+type PackageManager = "npm" | "pnpm" | "yarn" | "bun";
+
+const buildInstallCommand = (
+  packageManager: PackageManager,
+  components: string[],
+  options?: { overwrite?: boolean; cssVariables?: boolean }
+): { command: string; args: string[] } => {
+  const baseArgs = ["shadcn@latest", "add", ...components];
+
+  if (options?.overwrite) {
+    baseArgs.push("--overwrite");
+  }
+  if (options?.cssVariables === false) {
+    baseArgs.push("--no-css-variables");
+  }
+
+  baseArgs.push(...components);
+
+  switch (packageManager) {
+    case "pnpm":
+      return { command: "pnpm", args: ["dlx", ...baseArgs] };
+    case "yarn":
+      return { command: "yarn", args: ["dlx", ...baseArgs] };
+    case "bun":
+      return { command: "bunx", args: ["--bun", ...baseArgs] };
+    case "npm":
+    default:
+      return { command: "npx", args: ["--yes", ...baseArgs] };
+  }
+};
+
 export const installComponents = async (
-  components: string[]
+  components: string[],
+  options?: { overwrite?: boolean; cssVariables?: boolean }
 ): Promise<void> => {
   const packageManager = getUserPkgManager();
-  const { command, args } = buildInstallCommand(packageManager, components);
+  const { command, args } = buildInstallCommand(
+    packageManager,
+    components,
+    options
+  );
 
   const s = spinner();
   s.start(`Installing components using ${packageManager}...`);
