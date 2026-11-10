@@ -1,15 +1,60 @@
 import { Command } from "commander";
 import { packageInfo } from "../lib/packageInfo.js";
+import { CliError } from "../core/errors.js";
+import { type OutputOptions, validateOutputOptions } from "./output.js";
 
-export function createProgram(): Command {
+export interface ProgramOptions {
+  writeInformation?: (text: string) => void;
+}
+
+export function createProgram(options: ProgramOptions = {}): Command {
   const program = new Command()
     .name(packageInfo.name)
     .description(packageInfo.description)
-    .version(packageInfo.version);
+    .version(packageInfo.version)
+    .option("--json", "Output structured JSON for supported commands")
+    .option("--plain", "Output plain text for supported commands")
+    .option("--no-interactive", "Disable interactive prompts")
+    .exitOverride()
+    .configureOutput({
+      writeOut: options.writeInformation ?? ((text) => process.stdout.write(text)),
+      // The runner renders parser errors using the selected output contract.
+      writeErr: () => {},
+      outputError: () => {},
+    });
 
-  program.hook("preAction", async () => {
-    const { renderTitle } = await import("../utils/renderTitle.js");
-    renderTitle();
+  program.action(() => program.help());
+
+  program.hook("preAction", async (_program, command) => {
+    const outputOptions = program.opts<OutputOptions>();
+    validateOutputOptions(outputOptions);
+    if (command === program) return;
+
+    if (outputOptions.json || outputOptions.plain) {
+      throw new CliError(
+        "OUTPUT_MODE_UNSUPPORTED",
+        "This legacy workflow does not support --json or --plain yet. " +
+          "Help and version output support both modes."
+      );
+    }
+
+    const canPrompt = Boolean(process.stdin.isTTY && process.stdout.isTTY) &&
+      outputOptions.interactive !== false;
+    const isReadOnlyPreset = command.parent?.name() === "preset" &&
+      ["list", "show"].includes(command.name());
+
+    if (!canPrompt && !isReadOnlyPreset) {
+      throw new CliError(
+        "INTERACTIVE_REQUIRED",
+        "This legacy workflow requires an interactive terminal. " +
+          "Run it in a terminal without --no-interactive."
+      );
+    }
+
+    if (canPrompt) {
+      const { renderTitle } = await import("../utils/renderTitle.js");
+      renderTitle();
+    }
   });
 
   const presetCommand = program

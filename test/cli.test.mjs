@@ -67,3 +67,92 @@ test("an existing noninteractive preset command still dispatches", () => {
   assert.match(result.stdout, /Core Components/);
   assert.match(result.stdout, /Button/);
 });
+
+test("JSON version output is structured and stays lightweight", () => {
+  const result = node(["--import", blocker, cli, "--json", "--version"]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(JSON.parse(result.stdout), {
+    schemaVersion: 1,
+    toolVersion: metadata.version,
+    status: "completed",
+    data: { name: "shadcn-plus", version: metadata.version },
+  });
+  assert.equal(result.stderr, "");
+});
+
+test("JSON subcommand help does not load its workflow", () => {
+  const result = node(["--import", blocker, cli, "--json", "preset", "show", "--help"]);
+  assert.equal(result.status, 0, result.stderr);
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.status, "completed");
+  assert.match(payload.data.help, /Usage: shadcn-plus preset show/);
+  assert.equal(result.stderr, "");
+});
+
+for (const args of [["--json", "not-a-command"], ["--json", "preset", "show"], ["preset", "show", "core", "--json", "--unknown"]]) {
+  test(`parser errors use JSON and exit 2: ${args.join(" ")}`, () => {
+    const result = node(["--import", blocker, cli, ...args]);
+    assert.equal(result.status, 2, result.stderr);
+    const payload = JSON.parse(result.stdout);
+    assert.equal(payload.status, "error");
+    assert.equal(payload.error.code, "INVALID_ARGUMENT");
+    assert.equal(result.stderr, "");
+  });
+}
+
+test("ordinary parser errors go to stderr without a stack trace", () => {
+  const result = node([cli, "preset", "show"]);
+  assert.equal(result.status, 2);
+  assert.equal(result.stdout, "");
+  assert.match(result.stderr, /^ERROR INVALID_ARGUMENT: missing required argument/);
+  assert.doesNotMatch(result.stderr, /\n\s+at /);
+});
+
+test("unsupported JSON workflows fail before importing or executing them", () => {
+  const result = node(["--import", blocker, cli, "preset", "show", "core", "--json"]);
+  assert.equal(result.status, 2, result.stderr);
+  assert.equal(JSON.parse(result.stdout).error.code, "OUTPUT_MODE_UNSUPPORTED");
+  assert.equal(result.stderr, "");
+});
+
+test("unsupported plain workflows fail explicitly", () => {
+  const result = node(["--import", blocker, cli, "--plain", "preset", "show", "core"]);
+  assert.equal(result.status, 2);
+  assert.equal(result.stdout, "");
+  assert.match(result.stderr, /^ERROR OUTPUT_MODE_UNSUPPORTED:/);
+});
+
+for (const args of [["add", "button"], ["remove", "button"], ["lint"], ["preset"], ["preset", "install", "core"], ["preset", "create", "demo", "button"], ["preset", "delete", "demo"]]) {
+  test(`noninteractive legacy workflows fail before prompting or writing: ${args.join(" ")}`, () => {
+    const result = node(["--import", blocker, cli, "--no-interactive", ...args]);
+    assert.equal(result.status, 2);
+    assert.equal(result.stdout, "");
+    assert.match(result.stderr, /^ERROR INTERACTIVE_REQUIRED:/);
+  });
+}
+
+test("conflicting output flags produce one structured error", () => {
+  const result = node([cli, "--json", "--plain", "--help"]);
+  assert.equal(result.status, 2, result.stderr);
+  assert.equal(JSON.parse(result.stdout).error.code, "INVALID_OPTIONS");
+  assert.equal(result.stderr, "");
+});
+
+test("an empty invocation shows help without starting a workflow", () => {
+  const result = node(["--import", blocker, cli]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /Usage: shadcn-plus/);
+});
+
+test("the library runner returns an exit code without exiting its caller", () => {
+  const entry = new URL("../dist/index.js", import.meta.url).href;
+  const script = `const { runCli } = await import(${JSON.stringify(entry)});
+    const code = await runCli(["node", "shadcn-plus", "--json", "--version"]);
+    console.log("returned:" + code);`;
+  const result = node(["--import", blocker, "--input-type=module", "--eval", script]);
+  assert.equal(result.status, 0, result.stderr);
+  const [payload, returned] = result.stdout.trim().split("\n");
+  assert.equal(JSON.parse(payload).data.version, metadata.version);
+  assert.equal(returned, "returned:0");
+  assert.equal(result.stderr, "");
+});

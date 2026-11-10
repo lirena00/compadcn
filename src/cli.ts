@@ -2,4 +2,4 @@
 
 import { runCli } from "./cli/run.js";
 
-await runCli();
+process.exitCode = await runCli();

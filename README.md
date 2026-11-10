@@ -18,7 +18,33 @@ V2 is under development. This checkout retains the existing component and preset
 pnpm install --frozen-lockfile
 pnpm run build
 node dist/cli.js --help
+pnpm test
 ```
+
+The package exports `createProgram` and `runCli` for integration without starting
+the executable on import. `runCli(argv)` returns an exit code; only the executable
+sets the process exit code.
+
+## Output and automation
+
+```bash
+shadcn-plus --plain --help
+shadcn-plus --json --version
+shadcn-plus --json preset show --help
+```
+
+Put output options before `--help` or `--version`, which complete parsing
+immediately. JSON responses contain `schemaVersion`, `toolVersion`, `status`, and
+either `data` or `error`. Plain CLI errors go to stderr; JSON errors are returned
+as one structured response on stdout. Parser/runner errors return exit code `2`.
+
+Help, version, and CLI errors support these output modes. Existing component and
+preset workflows do not yet support `--json` or `--plain`; they return
+`OUTPUT_MODE_UNSUPPORTED` instead of mixing terminal text with machine output.
+Workflows requiring prompts fail with `INTERACTIVE_REQUIRED` when no interactive
+terminal is available or `--no-interactive` is set. `preset list` and `preset show`
+remain available without prompts. Their legacy internal error handling will be
+converted with the remaining workflows.
 
 ## Installation
 
@@ -148,7 +174,8 @@ your-project/
 
 ## Custom Presets
 
-Custom presets continue to use the existing `~/.compadcn/custom-presets.json` storage until an explicit migration is implemented and can be:
+Custom presets continue to use the existing `~/.compadcn/custom-presets.json`
+storage until an explicit migration is implemented. They can be:
 
 - Created from scratch
 - Based on existing presets
