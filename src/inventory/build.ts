@@ -58,7 +58,7 @@ export async function buildInventory(options: InventoryOptions = {}): Promise<In
 }
 
 export async function createInventorySession(options: InventoryOptions = {}): Promise<{
-  report: InventoryReport; contexts: Map<string, ProjectContext>; sources: RegistrySource[]; client: RegistryClient;
+  report: InventoryReport; contexts: Map<string, ProjectContext>; sources: RegistrySource[]; client: RegistryClient; selected: ProjectContext;
 }> {
   const concurrency = options.concurrency ?? 4;
   if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 16 || (options.offline && options.refresh)) {
@@ -157,5 +157,5 @@ export async function createInventorySession(options: InventoryOptions = {}): Pr
       unknownFiles: localFiles.filter(({ origin }) => origin === "unknown").length,
     }, diagnostics, complete,
   };
-  return { report, contexts, sources, client };
+  return { report, contexts, sources, client, selected };
 }

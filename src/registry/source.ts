@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { registryConfigItemSchema } from "shadcn/schema";
@@ -6,8 +5,9 @@ import { CliError } from "../core/errors.js";
 import { isObject, readObject } from "../project/files.js";
 import type { Diagnostic } from "../project/types.js";
 import type { SourceDescriptor } from "./types.js";
+import { digest } from "../core/hash.js";
 
-export const digest = (text: string | Uint8Array): string => createHash("sha256").update(text).digest("hex");
+export { digest } from "../core/hash.js";
 type Definition = { url: string; headers?: Record<string, string>; params?: Record<string, string> };
 const builtin = "https://ui.shadcn.com/r/styles/{style}/{name}.json";
 

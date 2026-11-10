@@ -50,6 +50,7 @@ export async function registryClosure(session: InventorySession, store: GraphSto
   const visited = new Set<string>();
   const pending: Address[] = [];
   const extraSources = new Map<string, RegistrySource>();
+  const aliases = new Map<string, { addresses: Set<string>; sources: Set<string> }>();
   let complete = true;
   const fail = (from: string | undefined, reference: RegistryReference | { id: string; reference: string }, context: ProjectContext, error: unknown): void => {
     complete = false;
@@ -61,9 +62,13 @@ export async function registryClosure(session: InventorySession, store: GraphSto
     diagnostics.push({ code, severity: "error", message: error instanceof CliError ? error.message : "Cannot resolve registry dependency.", path: context.projectRoot });
   };
   const enqueue = (entry: Address): void => {
+    const labels = aliases.get(entry.id) ?? { addresses: new Set<string>(), sources: new Set<string>() };
+    labels.addresses.add(entry.display); labels.sources.add(entry.source.descriptor.id); aliases.set(entry.id, labels);
+    extraSources.set(entry.source.descriptor.id, entry.source);
+    const existing = store.nodes.get(entry.id);
+    if (existing) store.node({ ...existing, addresses: [...labels.addresses].sort(), sourceIds: [...labels.sources].sort() });
     if (visited.has(entry.id)) return;
     visited.add(entry.id);
-    extraSources.set(entry.source.descriptor.id, entry.source);
     if (visited.size > options.maxItems) {
       store.node({ id: entry.id, kind: "unresolved", label: "Registry item limit", scope: entry.context.projectRoot, state: "unresolved" });
       diagnostics.push({ code: "GRAPH_ITEM_LIMIT", severity: "error", message: "Registry dependency closure exceeds the configured item limit.", path: entry.context.projectRoot });
@@ -101,7 +106,8 @@ export async function registryClosure(session: InventorySession, store: GraphSto
         if (fetched.cache === "stale-cache") complete = false;
         if (fetched.diagnostic) diagnostics.push(fetched.diagnostic);
         diagnostics.push(...item.diagnostics);
-        store.node({ id, kind: "item", label: source.direct ? detail.name : entry.display, addresses: [entry.display], sourceIds: [source.descriptor.id], scope: context.projectRoot,
+        store.node({ id, kind: "item", label: source.direct ? detail.name : entry.display, addresses: [...aliases.get(id)!.addresses].sort(), sourceIds: [...aliases.get(id)!.sources].sort(), scope: context.projectRoot,
+          ownershipKey: digest(JSON.stringify([source.request(entry.name).key, item.mappedFiles.map(({ path }) => path).filter(Boolean).sort()])),
           state: item.presence, itemType: item.type, manifest: item.manifest === "stale" ? "stale" : "fetched", originConfidence: item.originConfidence });
         if (options.scope === "installed" && seeds.has(id) && source.direct && !item.mappedFiles.some(({ present }) => present)) {
           diagnostics.push({ code: "GRAPH_ITEM_NOT_LOCAL", severity: "error", message: "URL seed has no observed local files; use catalog scope.", path: context.projectRoot }); complete = false;

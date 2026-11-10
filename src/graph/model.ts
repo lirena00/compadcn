@@ -1,5 +1,5 @@
 import { CliError } from "../core/errors.js";
-import { digest } from "../registry/source.js";
+import { digest } from "../core/hash.js";
 import type { DependencyGraph, EdgeKind, GraphCycle, GraphEdge, GraphNode } from "./types.js";
 
 export const nodeId = (...parts: string[]): string => `n${digest(JSON.stringify(parts))}`;

@@ -2,7 +2,7 @@ import type { Diagnostic } from "../project/types.js";
 import type { SourceDescriptor } from "../registry/types.js";
 import type { InventoryReport } from "../inventory/types.js";
 
-export type EdgeKind = "registry-dependency" | "item-file-candidate" | "file-import" | "package-import" | "declared-package" | "item-resource";
+export type EdgeKind = "registry-dependency" | "item-file-candidate" | "file-import" | "package-import" | "builtin-import" | "declared-package" | "item-resource";
 
 export interface GraphNode {
   id: string;
@@ -15,6 +15,7 @@ export interface GraphNode {
   itemType?: string;
   manifest?: "fetched" | "stale" | "error";
   originConfidence?: "candidate" | "ambiguous" | "unknown";
+  ownershipKey?: string;
   path?: string;
   contentHash?: string;
   packageName?: string;
