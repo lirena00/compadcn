@@ -15,6 +15,11 @@ export type { GraphOptions } from "./graph/build.js";
 export type { DependencyGraph, GraphNode, GraphEdge, EdgeKind, GraphCycle } from "./graph/types.js";
 export { graphNeighbors } from "./graph/model.js";
 export { selectGraph, formatMermaid } from "./graph/export.js";
+export { explainAudit } from "./audit/why.js";
+export type { AuditOptions } from "./audit/build.js";
+export type { AuditReport, WhyReport, FileFinding, ItemFinding, PackageFinding, UsageState } from "./audit/types.js";
+export type { EntryRoot } from "./analysis/types.js";
+export type { UsageProof } from "./analysis/reachability.js";
 
 // Keep importing the API and constructing/helping the CLI free of filesystem scans.
 export async function discoverProject(
@@ -36,4 +41,11 @@ export async function buildDependencyGraph(
 ): Promise<import("./graph/types.js").DependencyGraph> {
   const graph = await import("./graph/build.js");
   return graph.buildDependencyGraph(options);
+}
+
+export async function auditProject(
+  options: import("./audit/build.js").AuditOptions = {}
+): Promise<import("./audit/types.js").AuditReport> {
+  const audit = await import("./audit/build.js");
+  return audit.auditProject(options);
 }

@@ -2,7 +2,9 @@
 
 A CLI for installing and managing shadcn/ui components and presets, formerly named compadcn.
 
-V2 is under development. This checkout retains the existing component and preset commands while its new foundations are implemented. Multi-registry auditing and cleanup plans are not implemented yet.
+V2 is under development. This checkout includes multi-registry inventory, dependency
+graphs, and read-only usage audits alongside the existing component and preset
+commands. Ownership adoption and cleanup plans are still being implemented.
 
 ## Features
 
@@ -38,7 +40,7 @@ immediately. JSON responses contain `schemaVersion`, `toolVersion`, `status`, an
 either `data` or `error`. Plain CLI errors go to stderr; JSON errors are returned
 as one structured response on stdout. Parser/runner errors return exit code `2`.
 
-Doctor, inventory, graph, help, version, and CLI errors support these output modes. Existing component and
+Doctor, inventory, graph, audit, why, help, version, and CLI errors support these output modes. Existing component and
 preset workflows do not yet support `--json` or `--plain`; they return
 `OUTPUT_MODE_UNSUPPORTED` instead of mixing terminal text with machine output.
 Workflows requiring prompts fail with `INTERACTIVE_REQUIRED` when no interactive
@@ -75,7 +77,7 @@ shadcn-plus --plain doctor --cwd ./src/features
 Doctor selects the nearest `package.json` from the chosen directory, stopping at
 the Git/worktree boundary. At a workspace root, select the intended app/package
 with `doctor --cwd`; it does not choose an app automatically. `--cwd` currently
-is available on `doctor`, `inventory`, and `graph`.
+is available on `doctor`, `inventory`, `graph`, `audit`, and `why`.
 
 It reports the framework inferred from dependencies, conventional source folders,
 package manager and its metadata location, workspace members, compiler configs,
@@ -170,9 +172,8 @@ limits preserve incomplete coverage rather than reporting an empty clean invento
 
 The API exposes `await buildInventory({ cwd, offline, cacheDir, items })`. Inventory
 is read-only with respect to project files; its metadata cache is the only write.
-Legacy add/preset/lint/remove commands keep their existing behavior. Usage
-analysis, ownership adoption, and cleanup plans follow in separate implementation
-units.
+Legacy add/preset/lint/remove commands keep their existing behavior. Ownership
+adoption and cleanup plans follow in separate implementation units.
 
 ### `shadcn-plus graph`
 
@@ -219,8 +220,8 @@ their internal dependencies. Framework configs are not executed.
 By default source scanning covers the selected inventory scopes; `--workspace`
 also scans workspace consumers without their own `components.json`. This command
 does not identify application entry points, classify unused components, or establish
-cleanup eligibility. `coverage.usage` is `not-analyzed`; those decisions belong to
-the later audit service. Shared effects and unsupported resources remain retained.
+cleanup eligibility. `coverage.usage` is `not-analyzed`; use `audit` for usage
+classification. Shared effects and unsupported resources remain retained.
 
 JSON contains a graph version, deterministic content snapshot ID, typed nodes and
 edges, direct dependency/dependent indexes, source/registry cycles with edge IDs,
@@ -249,6 +250,84 @@ The API exposes `await buildDependencyGraph(options)`, `graphNeighbors(graph, id
 { direction: "dependents", transitive: true })`, `selectGraph`, and `formatMermaid`.
 Help/version/API imports remain lazy with respect to source scanning and the
 TypeScript runtime.
+
+### `shadcn-plus audit` and `shadcn-plus why <reference>`
+
+Classify observed local items from every configured compatible registry, then
+explain an item, managed file, or related package:
+
+```bash
+shadcn-plus audit --cwd ./apps/web --json
+shadcn-plus audit --summary --json
+shadcn-plus why @company/dashboard --plain
+shadcn-plus why src/components/ui/button.tsx --json
+shadcn-plus audit --offline --json
+shadcn-plus audit --entry 'apps/web/src/main.tsx' --dev-entry 'apps/web/tests/**/*.ts' --json
+```
+
+Audit includes all workspace consumers by default, including packages without a
+`components.json`. Counts group identical observed file footprints and keep all
+candidate addresses and competing origins. Available catalog entries without local
+files are excluded from usage totals. Managed files without a matching registry
+manifest remain visible as unknown-origin findings.
+
+Usage has four states: `runtime`, `development-only`, `unused-candidate`, and
+`unknown`. Runtime paths follow resolved imports from application entries;
+development paths include test/story/config/script roots and type-only imports.
+An unused candidate requires agreement between the bounded reference graph and
+both all-source and production runs of pinned `knip@6.45.0`, with complete graph,
+root, analyzer, and workspace coverage. Analyzer disagreement retains the file
+with a diagnostic. Known runtime paths can remain visible during incomplete source
+analysis; missing coverage never becomes evidence of absence.
+
+Entry discovery supports conventional Next app/pages routes, Vite HTML module
+entries, generic `src/main`/`src/index` entries, and source package bins/exports.
+Executable project configuration is never evaluated. Knip uses a generated static
+configuration with its framework plugins disabled; it does not load the project's
+Knip configuration or infer arbitrary plugin entries. Only simple framework
+configuration objects with recognized non-entry settings permit default entry
+discovery. Custom settings, config wrappers/plugins, or unsupported entry layouts
+require repeated `--entry` patterns. These replace runtime conventions in the
+workspace scopes they match. Patterns are relative to the workspace root (or
+project root outside a workspace); `--dev-entry` adds development roots. A missing
+match returns incomplete coverage. Supply all runtime roots for each overridden
+scope. Public package contracts remain retained even with explicit entries.
+Inline HTML imports of npm packages lack source-graph evidence and return
+incomplete coverage; move them into a source module for a complete audit.
+
+Public exports, partial multi-file items, CSS/theme/config/env/font effects,
+ambiguous ownership, and retained registry dependents carry retention reasons.
+Registry dependency declarations explain retention separately from source usage.
+Unused is a usage finding, not permission to delete: every cleanup eligibility
+flag remains false. Related package findings retain framework/peer/public/script
+requirements and shared consumers; package candidates are advisory only. No source,
+imports, manifests, lockfiles, or packages are changed. Registry cache writes and
+temporary generated analysis configuration are the only writes; temporary files
+are removed after analysis.
+
+`why` accepts a qualified item address, file path, finding/node ID, or related
+package name. Ambiguous references return `WHY_AMBIGUOUS` with choices. Evidence
+includes a representative root-to-file import path with source locations (up to
+64 steps), direct consumers (up to 12, with the full count), and retention reasons.
+Unmatched references return `WHY_NOT_FOUND` only when coverage is complete;
+otherwise they return `WHY_UNRESOLVED` with diagnostics.
+
+JSON uses the shared output envelope. A complete audit exits `0`, including when
+unused candidates exist. Incomplete analysis exits `2` with `AUDIT_INCOMPLETE` and
+the partial report in `error.details.audit` or explanation in `error.details.why`.
+`--summary` omits item/file/package/root details while preserving counts, snapshot
+IDs, coverage, diagnostics, analyzer version, and measured pass durations. Timings
+are excluded from snapshot hashes. Plain errors go to stderr; JSON stdout remains
+one response. The registry/cache/limit flags supported by `graph` also apply here;
+`--analysis-timeout` bounds each of two sequential Knip passes (default 60000 ms,
+maximum 300000 ms). There is no audit fix/removal flag.
+
+The lazy API exposes `await auditProject({cwd, entries, devEntries, offline})` and
+`explainAudit(report, reference)`. The latter reuses an existing snapshot without
+fetching or re-running analysis. Help/version/API imports do not load Knip,
+TypeScript, or the HTML parser. MDX/Vue/Svelte, computed references, unresolved
+aliases, and unsupported configuration retain the graph's coverage limitations.
+No performance or token-saving claim is inferred from these measurements.
 
 ### `shadcn-plus add [components...]`
 

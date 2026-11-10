@@ -29,13 +29,13 @@ export function createProgram(options: ProgramOptions = {}): Command {
     const outputOptions = program.opts<OutputOptions>();
     validateOutputOptions(outputOptions);
     if (command === program) return;
-    if (command === doctorCommand || command === inventoryCommand || command === graphCommand) return;
+    if (command === doctorCommand || command === inventoryCommand || command === graphCommand || command === auditCommand || command === whyCommand) return;
 
     if (outputOptions.json || outputOptions.plain) {
       throw new CliError(
         "OUTPUT_MODE_UNSUPPORTED",
         "This legacy workflow does not support --json or --plain yet. " +
-          "Doctor, inventory, graph, help, and version output support both modes."
+          "Doctor, inventory, graph, audit, why, help, and version output support both modes."
       );
     }
 
@@ -108,6 +108,21 @@ export function createProgram(options: ProgramOptions = {}): Command {
     .action(async (graphOptions) => {
       const { runGraph } = await import("./graph.js");
       await runGraph(graphOptions, program.opts<OutputOptions>());
+    });
+
+  const auditCommand = configureAuditCommand(program.command("audit")
+    .description("Classify local component usage with bounded entry and reference evidence"))
+    .option("--summary", "Return counts, coverage, diagnostics and snapshot IDs without finding details")
+    .action(async (auditOptions) => {
+      const { runAudit } = await import("./audit.js");
+      await runAudit(auditOptions, program.opts<OutputOptions>());
+    });
+
+  const whyCommand = configureAuditCommand(program.command("why <reference>")
+    .description("Explain a local item, managed file, or related package by address, path, or ID"))
+    .action(async (reference: string, auditOptions) => {
+      const { runAudit } = await import("./audit.js");
+      await runAudit(auditOptions, program.opts<OutputOptions>(), reference);
     });
 
   const presetCommand = program
@@ -199,4 +214,22 @@ export function createProgram(options: ProgramOptions = {}): Command {
     });
 
   return program;
+}
+
+function configureAuditCommand(command: Command): Command {
+  const collect = (value: string, previous: string[]) => [...previous, value];
+  return command
+    .option("-c, --cwd <path>", "Target project or workspace package", ".")
+    .option("--workspace", "Include all workspace consumers (the default inside a workspace)")
+    .option("--entry <pattern>", "Runtime entry glob relative to the workspace/project root (repeatable)", collect, [])
+    .option("--dev-entry <pattern>", "Additional development entry glob relative to the analysis root (repeatable)", collect, [])
+    .option("--offline", "Read cached registry metadata without network requests")
+    .option("--refresh", "Revalidate cached registry metadata")
+    .option("--no-cache", "Disable persistent registry caching")
+    .option("--cache-dir <path>", "Registry metadata cache directory")
+    .option("-j, --concurrency <number>", "Maximum concurrent registry operations (1-16)", "4")
+    .option("--timeout <milliseconds>", "Timeout per registry request attempt (maximum 60000)", "10000")
+    .option("--analysis-timeout <milliseconds>", "Timeout per Knip pass (1-300000)", "60000")
+    .option("--max-items <number>", "Registry closure limit (1-10000)", "2000")
+    .option("--max-files <number>", "Source parsing limit (1-100000)", "20000");
 }
