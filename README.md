@@ -17,7 +17,7 @@ V2 is under development. This checkout retains the existing component and preset
 ```bash
 pnpm install --frozen-lockfile
 pnpm run build
-node dist/index.js --help
+node dist/cli.js --help
 ```
 
 ## Installation

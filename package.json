@@ -5,7 +5,7 @@
   "type": "module",
   "main": "./dist/index.js",
   "bin": {
-    "shadcn-plus": "./dist/index.js"
+    "shadcn-plus": "./dist/cli.js"
   },
   "exports": {
     ".": {
@@ -18,12 +18,13 @@
   ],
   "scripts": {
     "build": "tsc",
-    "dev": "tsx src/index.ts",
-    "dev:watch": "tsx watch src/index.ts",
+    "dev": "tsx src/cli.ts",
+    "dev:watch": "tsx watch src/cli.ts",
     "typecheck": "tsc --noEmit",
     "clean": "rimraf dist",
     "prepublishOnly": "pnpm run clean && pnpm run build",
-    "link-cli": "pnpm run build && pnpm unlink --global && pnpm link --global"
+    "link-cli": "pnpm run build && pnpm unlink --global && pnpm link --global",
+    "test": "pnpm run build && node --test"
   },
   "keywords": [
     "cli",
