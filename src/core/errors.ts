@@ -10,3 +10,8 @@ export class CliError extends Error {
     this.name = "CliError";
   }
 }
+
+export function toCliError(error: unknown, code: string, message: string): CliError {
+  if (error instanceof CliError) return error;
+  return new CliError(code, error instanceof Error ? `${message} ${error.message}` : message);
+}

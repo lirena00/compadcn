@@ -43,8 +43,9 @@ preset workflows do not yet support `--json` or `--plain`; they return
 `OUTPUT_MODE_UNSUPPORTED` instead of mixing terminal text with machine output.
 Workflows requiring prompts fail with `INTERACTIVE_REQUIRED` when no interactive
 terminal is available or `--no-interactive` is set. `preset list` and `preset show`
-remain available without prompts. Their legacy internal error handling will be
-converted with the remaining workflows.
+remain available without prompts. Legacy workflows return nonzero exit codes for
+validation, filesystem, and subprocess failures; cancellation remains a normal
+outcome. File cleanup is still non-transactional until plan/apply is implemented.
 
 ## Installation
 
@@ -147,6 +148,15 @@ shadcn-plus preset delete "my-preset"
 - Node.js 22.12.0 or higher
 - A ShadCN project with `components.json` file
 - Package manager: npm, pnpm, yarn, or bun
+
+Package-manager detection uses the nearest project's `packageManager` field or
+lockfile before the launcher environment. It supports `bun.lock` and `bun.lockb`,
+and reports conflicting declarations/lockfiles instead of choosing silently.
+The installer runners use npm/npx, pnpm dlx, modern Yarn dlx, or Bun bunx.
+External installers/removers inherit terminal input and output so their prompts
+and diagnostics remain visible. Configure `tailwind.cssVariables` in
+`components.json`; the old add-time CSS-variable flags are not accepted by
+upstream `shadcn add` and are no longer exposed.
 
 ## How It Works
 

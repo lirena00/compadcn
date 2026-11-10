@@ -1,3 +1,4 @@
+import { CliError, toCliError } from "../core/errors.js";
 import {
   intro,
   outro,
@@ -22,6 +23,9 @@ export async function runRemoveUI(componentsToRemove?: string[]) {
     const installedComponents = await getInstalledComponents();
 
     if (installedComponents.length === 0) {
+      if (componentsToRemove?.length) {
+        throw new CliError("COMPONENT_NOT_INSTALLED", "The requested components are not installed.");
+      }
       outro(
         chalk.yellow(
           "No ShadCN components found. Make sure you have components installed."
@@ -45,8 +49,7 @@ export async function runRemoveUI(componentsToRemove?: string[]) {
             )}`
           )
         );
-        outro(chalk.red("Cannot proceed with removal."));
-        return;
+        throw new CliError("COMPONENT_NOT_INSTALLED", "Components not installed: " + invalidComponents.join(", "));
       }
 
       finalComponentsToRemove = componentsToRemove;
@@ -102,8 +105,7 @@ ${chalk.gray(
         )
       );
 
-      outro(chalk.red("Cannot proceed with removal."));
-      return;
+      throw new CliError("DEPENDENCY_CONFLICT", "Retained components depend on the requested components.", { conflicts: conflictResult.conflicts });
     }
 
     // Show components to be removed
@@ -186,9 +188,7 @@ ${chalk.gray(
       )
     );
   } catch (error) {
-    log.error(chalk.red("Error during component removal"));
-    console.error(error);
-    outro(chalk.red("Failed to remove components."));
+    throw toCliError(error, "COMPONENT_REMOVAL_FAILED", "Component removal failed.");
   }
 }
 

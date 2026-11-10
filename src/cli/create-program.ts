@@ -129,8 +129,6 @@ export function createProgram(options: ProgramOptions = {}): Command {
     .alias("a")
     .description("Add ShadCN components to your project")
     .option("-o, --overwrite", "Overwrite existing files")
-    .option("--css-variables", "Use CSS variables for theming (default)")
-    .option("--no-css-variables", "Do not use CSS variables for theming")
     .argument("[components...]", "Component names to add (e.g., button card)")
     .action(async (components: string[], options) => {
       const { runAddUI } = await import("../commands/add.js");

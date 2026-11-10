@@ -3,6 +3,7 @@ import { join, resolve } from "path";
 import { readFileSync } from "fs";
 import { spinner } from "@clack/prompts";
 import chalk from "chalk";
+import { CliError, toCliError } from "../core/errors.js";
 
 interface ComponentsConfig {
   aliases: {
@@ -61,13 +62,12 @@ export async function removeComponents(
     }
 
     if (errors.length > 0) {
-      s.stop(chalk.yellow("Completed with warnings"));
-      errors.forEach((error) => console.warn(chalk.yellow(error)));
+      throw new CliError("COMPONENT_REMOVAL_FAILED", errors.join("\n"), { removedCount, errors });
     } else {
       s.stop(chalk.green(`Removed ${removedCount} component files`));
     }
   } catch (error) {
     s.stop(chalk.red("Failed to remove components"));
-    throw error;
+    throw toCliError(error, "COMPONENT_REMOVAL_FAILED", "Could not remove component files.");
   }
 }

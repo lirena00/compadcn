@@ -1,7 +1,7 @@
 import { execa } from "execa";
-import { spinner } from "@clack/prompts";
-import chalk from "chalk";
+import { log } from "@clack/prompts";
 import { getUserPkgManager } from "./getUserPkgManager.js";
+import { CliError, toCliError } from "../core/errors.js";
 
 type PackageManager = "npm" | "pnpm" | "yarn" | "bun";
 
@@ -15,11 +15,12 @@ const buildInstallCommand = (
   if (options?.overwrite) {
     baseArgs.push("--overwrite");
   }
-  if (options?.cssVariables === false) {
-    baseArgs.push("--no-css-variables");
+  if (options?.cssVariables !== undefined) {
+    throw new CliError(
+      "UNSUPPORTED_INSTALL_OPTION",
+      "Configure tailwind.cssVariables in components.json. shadcn add does not accept CSS-variable flags."
+    );
   }
-
-  baseArgs.push(...components);
 
   switch (packageManager) {
     case "pnpm":
@@ -38,6 +39,7 @@ export const installComponents = async (
   components: string[],
   options?: { overwrite?: boolean; cssVariables?: boolean }
 ): Promise<void> => {
+  if (components.length === 0) return;
   const packageManager = getUserPkgManager();
   const { command, args } = buildInstallCommand(
     packageManager,
@@ -45,21 +47,15 @@ export const installComponents = async (
     options
   );
 
-  const s = spinner();
-  s.start(`Installing components using ${packageManager}...`);
+  log.step(`Installing components using ${packageManager}...`);
 
   try {
     await execa(command, args, {
       cwd: process.cwd(),
+      stdio: "inherit",
     });
-    s.stop(chalk.green("Components installed successfully"));
+    log.success("Components installed successfully");
   } catch (error) {
-    s.stop(chalk.red("Installation failed"));
-
-    if (error instanceof Error) {
-      console.error(chalk.red(error.message));
-    }
-
-    throw error;
+    throw toCliError(error, "INSTALL_FAILED", "Component installation failed.");
   }
 };
