@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { CliError } from "../core/errors.js";
 import { getPackageManagerInfo } from "../utils/getUserPkgManager.js";
 import { loadCompilerConfigs, resolveAlias } from "./aliases.js";
-import { findProject, isObject, readObject } from "./files.js";
+import { canonicalPath, findProject, isObject, isWithin, readObject } from "./files.js";
 import { findWorkspace } from "./workspace.js";
 import type { Diagnostic, ProjectContext } from "./types.js";
 
@@ -32,15 +32,36 @@ export function discoverProject({ cwd = process.cwd(), env = process.env }: Disc
   };
   attempt(() => { context.workspace = findWorkspace(root); }, root);
   const boundary = context.workspace?.root ?? root;
-  attempt(() => { context.packageManager = getPackageManagerInfo({ cwd: root, env, boundary }); }, root);
+  attempt(() => {
+    context.packageManager = getPackageManagerInfo({ cwd: root, env, boundary });
+    if (context.workspace && context.workspace.root !== root) {
+      const workspaceManager = getPackageManagerInfo({ cwd: context.workspace.root, env, boundary });
+      if (["packageManager", "lockfile", "workspace"].includes(workspaceManager.source) && workspaceManager.name !== context.packageManager.name) {
+        throw new CliError("PACKAGE_MANAGER_CONFLICT", "Selected package and workspace root declare different package managers.");
+      }
+    }
+  }, root);
 
-  const dependencies = { ...(isObject(manifest.devDependencies) ? manifest.devDependencies : {}), ...(isObject(manifest.dependencies) ? manifest.dependencies : {}) };
+  const dependencies = {
+    ...(isObject(manifest.peerDependencies) ? manifest.peerDependencies : {}),
+    ...(isObject(manifest.devDependencies) ? manifest.devDependencies : {}),
+    ...(isObject(manifest.dependencies) ? manifest.dependencies : {}),
+  };
   const has = (name: string): boolean => Object.hasOwn(dependencies, name);
   context.framework = has("next") ? "next" : has("react") && has("vite") ? "vite-react" : has("react") ? "react" : "unknown";
   if (context.framework === "unknown") diagnostics.push({ code: "FRAMEWORK_UNRECOGNIZED", severity: "warning", message: "No Next.js, Vite React, or React dependency was detected. Only configuration resolution is checked." });
   if (context.framework === "react") diagnostics.push({ code: "FRAMEWORK_GENERIC_REACT", severity: "warning", message: "React configuration is resolved; framework-specific entry and usage analysis is not checked." });
-  context.sourceRoots = ["src", "app", "pages", "components"].map((name) => join(root, name))
-    .filter((path) => existsSync(path) && statSync(path).isDirectory());
+  attempt(() => {
+    for (const name of ["src", "app", "pages", "components"]) {
+      const path = join(root, name);
+      if (!existsSync(path) || !statSync(path).isDirectory()) continue;
+      const canonical = canonicalPath(path);
+      if (!isWithin(boundary, canonical)) {
+        throw new CliError("SOURCE_OUTSIDE_WORKSPACE", `Source directory resolves outside the selected project or workspace: ${path}.`);
+      }
+      if (!context.sourceRoots.includes(canonical)) context.sourceRoots.push(canonical);
+    }
+  }, root);
   const configs = loadCompilerConfigs(root, boundary, diagnostics);
   context.compilerConfigs = configs.map(({ path }) => path);
   const configPath = join(root, "components.json");

@@ -12,7 +12,7 @@ interface DetectionOptions {
 
 export interface PackageManagerInfo {
   name: PackageManager;
-  source: "packageManager" | "lockfile" | "environment" | "default";
+  source: "packageManager" | "lockfile" | "workspace" | "environment" | "default";
   directory: string;
 }
 
@@ -40,6 +40,8 @@ export function getPackageManagerInfo({
         .filter(([file]) => existsSync(join(directory, file)))
         .map(([, manager]) => manager)
     );
+    const pnpmWorkspace = existsSync(join(directory, "pnpm-workspace.yaml"));
+    if (pnpmWorkspace) managers.add("pnpm");
     const manifest = join(directory, "package.json");
     let declared: PackageManager | undefined;
 
@@ -70,7 +72,11 @@ export function getPackageManagerInfo({
       );
     }
     if (declared) return { name: declared, source: "packageManager", directory };
-    if (managers.size === 1) return { name: [...managers][0]!, source: "lockfile", directory };
+    if (managers.size === 1) {
+      const name = [...managers][0]!;
+      const hasLockfile = Object.entries(lockfiles).some(([file, manager]) => manager === name && existsSync(join(directory, file)));
+      return { name, source: hasLockfile ? "lockfile" : "workspace", directory };
+    }
 
     const parent = dirname(directory);
     if (parent === directory || existsSync(join(directory, ".git")) || (boundary && directory === resolve(boundary))) break;

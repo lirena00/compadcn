@@ -78,3 +78,9 @@ test("package manager reports inherited provenance and respects a supplied bound
   assert.deepEqual(getPackageManagerInfo({ cwd, env: {} }), { name: "pnpm", source: "packageManager", directory: root });
   assert.deepEqual(getPackageManagerInfo({ cwd, env: {}, boundary: cwd }), { name: "npm", source: "default", directory: cwd });
 });
+
+test("pnpm workspace metadata selects pnpm without a lockfile or launcher", (t) => {
+  const root = createProject(t, { "package.json": "{}", "pnpm-workspace.yaml": "" });
+  assert.equal(findWorkspace(root).packages.length, 1);
+  assert.deepEqual(getPackageManagerInfo({ cwd: root, env: {} }), { name: "pnpm", source: "workspace", directory: root });
+});

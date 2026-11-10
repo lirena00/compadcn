@@ -16,7 +16,7 @@ function workspacePatterns(root: string): { configPath: string; patterns: string
     try {
       const doc = parseDocument(readFileSync(yamlPath, "utf8"));
       if (doc.errors.length) throw new Error("Invalid YAML");
-      const data: unknown = doc.toJS({ maxAliasCount: 100 });
+      const data: unknown = doc.toJS({ maxAliasCount: 100 }) ?? {};
       if (!isObject(data)) throw new Error("Expected an object");
       patterns = data.packages ?? [];
     } catch {

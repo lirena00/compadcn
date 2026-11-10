@@ -79,6 +79,14 @@ test("exact and specific paths win over broad wildcard paths", (t) => {
   assert.equal(context.components.resolvedAliases.hooks.path, join(root, "special-hooks"));
 });
 
+test("an exact directory alias wins even when a broader wildcard matches its children", (t) => {
+  const root = createProject(t, {
+    "package.json": manifest({ next: "16" }), "components.json": config(),
+    "tsconfig.json": '{"compilerOptions":{"paths":{"@/*":["./src/*"],"@/components/ui":["./widgets"]}}}',
+  });
+  assert.equal(discover(root).components.resolvedAliases.ui.path, join(root, "widgets"));
+});
+
 test("local package imports route directory roots, nested folders, and utility extensions", (t) => {
   const root = createProject(t, {
     "package.json": manifest({ react: "19", vite: "7" }, { imports: { "#components/*": "./src/components/*.tsx", "#lib/*": "./src/lib/*.ts" } }),
@@ -92,6 +100,39 @@ test("local package imports route directory roots, nested folders, and utility e
     assert.equal(context.components.resolvedAliases[name].path, join(root, path));
     assert.equal(context.components.resolvedAliases[name].source, "package-imports");
   }
+});
+
+test("package directory imports may target their package root", (t) => {
+  const root = createProject(t, {
+    "package.json": manifest({ react: "19" }, { imports: { "#components/*": "./*.tsx" } }),
+    "components.json": config({ ui: "#components" }),
+  });
+  const context = discover(root);
+  assert.equal(context.ready, true, JSON.stringify(context.diagnostics));
+  assert.equal(context.components.resolvedAliases.ui.path, root);
+});
+
+test("package import traversal cannot escape into another workspace package", (t) => {
+  const root = createProject(t, {
+    "package.json": '{"workspaces":["apps/*"]}',
+    "apps/web/package.json": manifest({ react: "19" }, { imports: { "#components/*": "./../other/*.tsx" } }),
+    "apps/web/components.json": config({ ui: "#components" }),
+  });
+  const context = discover(join(root, "apps/web"));
+  assert.equal(context.ready, false);
+  assert.ok(context.diagnostics.some(({ code }) => code === "ALIAS_TARGET_UNSUPPORTED"));
+});
+
+test("workspace package-manager conflicts do not disappear behind a nearer lockfile", (t) => {
+  const root = createProject(t, {
+    "package.json": '{"name":"root","packageManager":"pnpm@10"}',
+    "pnpm-workspace.yaml": "packages: [apps/*]",
+    "apps/web/package.json": manifest({ next: "16" }), "apps/web/package-lock.json": "",
+    "apps/web/components.json": config({ ui: "./components/ui" }),
+  });
+  const context = discover(join(root, "apps/web"));
+  assert.equal(context.ready, false);
+  assert.ok(context.diagnostics.some(({ code }) => code === "PACKAGE_MANAGER_CONFLICT"));
 });
 
 test("shared workspace exports work before packages are installed or linked", (t) => {
@@ -178,6 +219,28 @@ test("symlink targets outside the project are detected even for an uncreated chi
   });
   symlinkSync(outside, join(root, "linked"), process.platform === "win32" ? "junction" : "dir");
   assert.ok(discover(root).diagnostics.some(({ code }) => code === "ALIAS_OUTSIDE_WORKSPACE"));
+});
+
+test("dangling links are unresolved instead of reported as valid missing directories", (t) => {
+  const root = createProject(t, { "package.json": manifest({ next: "16" }), "components.json": config({ ui: "./linked/not-created" }) });
+  symlinkSync(join(root, "missing"), join(root, "linked"), process.platform === "win32" ? "junction" : "dir");
+  const context = discover(root);
+  assert.equal(context.ready, false);
+  assert.ok(context.diagnostics.some(({ code }) => code === "PROJECT_READ_FAILED"));
+});
+
+test("conventional source directories cannot silently resolve outside the workspace", (t) => {
+  const outside = createProject(t);
+  const root = createProject(t, { "package.json": manifest({ next: "16" }), "components.json": config({ ui: "./widgets" }) });
+  symlinkSync(outside, join(root, "src"), process.platform === "win32" ? "junction" : "dir");
+  const context = discover(root);
+  assert.equal(context.ready, false);
+  assert.ok(context.diagnostics.some(({ code }) => code === "SOURCE_OUTSIDE_WORKSPACE"));
+});
+
+test("shared React libraries may declare React as a peer dependency", (t) => {
+  const root = createProject(t, { "package.json": '{"peerDependencies":{"react":"^19"}}', "components.json": config({ ui: "./components" }) });
+  assert.equal(discover(root).framework, "react");
 });
 
 test("workspace roots require explicit package selection instead of selecting an arbitrary app", (t) => {

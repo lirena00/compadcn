@@ -25,8 +25,9 @@ export function formatDoctor(context: ProjectContext): string {
 export function runDoctor(cwd: string, options: OutputOptions): void {
   const context = discoverProject({ cwd });
   const text = formatDoctor(context);
+  const mode = getOutputMode(options);
   if (!context.ready) {
-    throw new CliError("PROJECT_NOT_READY", text, { context });
+    throw new CliError("PROJECT_NOT_READY", mode === "json" ? "Project configuration could not be fully resolved. See context diagnostics." : text, { context });
   }
-  new CliOutput(getOutputMode(options)).success(context, text);
+  new CliOutput(mode).success(context, text);
 }

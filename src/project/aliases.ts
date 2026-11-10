@@ -87,11 +87,24 @@ function mappedTargets(map: Record<string, unknown>, specifier: string): string[
   };
   const star = key.indexOf("*");
   const wildcard = star < 0 ? "" : specifier.slice(star, specifier.length - (key.length - star - 1));
-  return values(map[key]).map((value) => star < 0 ? value : value.replaceAll("*", wildcard));
+  return values(map[key]).map((value) => {
+    const target = star < 0 ? value : value.replaceAll("*", wildcard);
+    let decoded: string;
+    try { decoded = decodeURIComponent(target); } catch {
+      throw new CliError("ALIAS_TARGET_UNSUPPORTED", "Package mappings contain invalid URL encoding.");
+    }
+    if (!target.startsWith("./") || decoded.includes("\\") || decoded.split("/").some((part) => part === ".." || part === "node_modules")) {
+      throw new CliError("ALIAS_TARGET_UNSUPPORTED", "Package mappings must point inside their owning package without traversal or node_modules segments.");
+    }
+    if (target.includes("?") || target.includes("#")) {
+      throw new CliError("ALIAS_TARGET_UNSUPPORTED", "Package mappings with URL queries or fragments are unsupported.");
+    }
+    return decoded;
+  });
 }
 
-function directoryTargets(specifier: string, directory: boolean, match: (value: string) => string[]): string[] {
-  if (directory) {
+function directoryTargets(specifier: string, directory: boolean, match: (value: string) => string[], preferExact = false): string[] {
+  if (directory && !preferExact) {
     const targets = match(`${specifier.replace(/\/$/, "")}/${marker}`);
     if (targets.length) {
       // A mapping such as ./components/*.tsx routes directory aliases too.
@@ -99,7 +112,8 @@ function directoryTargets(specifier: string, directory: boolean, match: (value: 
         if (!new RegExp(`[/\\\\]${marker}(?:\\.[a-zA-Z0-9.]+)?$`).test(target)) {
           throw new CliError("ALIAS_TARGET_UNSUPPORTED", "Directory mappings must preserve the wildcard path.");
         }
-        return dirname(target);
+        const parent = dirname(target);
+        return parent === "." ? "./" : parent;
       });
     }
   }
@@ -127,7 +141,7 @@ export function resolveAlias(options: AliasOptions): ResolvedAlias {
     const paths = compiler.config.compilerOptions?.paths;
     if (!paths) continue;
     const targets = directoryTargets(specifier, directory, (value) =>
-      mappingKey(paths, value) ? compiler.match?.(value) ?? [] : []
+      mappingKey(paths, value) ? compiler.match?.(value) ?? [] : [], Object.hasOwn(paths, specifier)
     );
     candidates.push(...targets.map((path) => ({ path, source: "tsconfig" as const, configPath: compiler.path })));
   }
