@@ -7,7 +7,7 @@ import { isObject, readObject } from "../project/files.js";
 import type { Diagnostic } from "../project/types.js";
 import type { SourceDescriptor } from "./types.js";
 
-export const digest = (text: string): string => createHash("sha256").update(text).digest("hex");
+export const digest = (text: string | Uint8Array): string => createHash("sha256").update(text).digest("hex");
 type Definition = { url: string; headers?: Record<string, string>; params?: Record<string, string> };
 const builtin = "https://ui.shadcn.com/r/styles/{style}/{name}.json";
 

@@ -45,6 +45,7 @@ export interface CatalogResult {
   status: "ready" | "stale" | "catalog-unavailable" | "error";
   items: RemoteItem[];
   pages: number;
+  cache: FetchResult["cache"][];
   fetchedAt?: string;
   diagnostics: Diagnostic[];
 }

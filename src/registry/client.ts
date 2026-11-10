@@ -203,13 +203,14 @@ export class RegistryClient {
   }
 
   async catalog(source: RegistrySource): Promise<CatalogResult> {
-    const result: CatalogResult = { source: source.descriptor, status: "ready", items: [], pages: 0, diagnostics: [] };
+    const result: CatalogResult = { source: source.descriptor, status: "ready", items: [], pages: 0, cache: [], diagnostics: [] };
     const names = new Set<string>();
     let offset = 0;
     try {
       for (let page = 0; page < 100; page++) {
         const fetched = await this.fetch(source, "registry", "catalog", { offset, limit: 100 });
         result.pages++;
+        if (!result.cache.includes(fetched.cache)) result.cache.push(fetched.cache);
         result.fetchedAt = !result.fetchedAt || fetched.fetchedAt < result.fetchedAt ? fetched.fetchedAt : result.fetchedAt;
         if (fetched.cache === "stale-cache") result.status = "stale";
         if (fetched.diagnostic) result.diagnostics.push(fetched.diagnostic);
