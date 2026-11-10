@@ -83,6 +83,13 @@ test("dynamic framework entry settings require an explicit policy rather than ex
   assert.equal(policy(root, { entries: ["missing.tsx"] }).complete, false);
 });
 
+test("framework config mutations and unknown settings cannot masquerade as static entry policies", (t) => {
+  for (const config of ['const config={};config.build={rollupOptions:{input:"custom.html"}};export default config;', 'export default {experimental:{someFutureEntryOption:true}};']) {
+    const root=project(t,{"vite.config.ts":config});
+    assert.ok(policy(root).diagnostics.some(({code})=>code==="FRAMEWORK_ENTRY_POLICY_REQUIRED"));
+  }
+});
+
 test("unresolved native imports, malformed reports, and timeouts stay incomplete", async (t) => {
   const root = project(t, { "src/main.tsx": 'import "./does-not-exist";' });
   const roots = policy(root);

@@ -11,6 +11,7 @@ import { fileId } from "../graph/model.js";
 import { parseReferences } from "../graph/references.js";
 import { ReferenceResolver } from "../graph/resolve.js";
 import type { EntryRoot, RootPolicy } from "./types.js";
+import { validateAnalysisOptions } from "./options.js";
 
 const code = /\.(?:[cm]?[jt]sx?)$/;
 const development = /(?:^|\/)(?:__tests__|tests?|stories|__stories__|e2e|playwright|scripts)\/|\.(?:test|spec|stories|story)\.[^.]+$|(?:^|\/)(?:[^/]+\.config|vitest\.setup|jest\.setup)\.[^.]+$|(?:^|\/)\.storybook\//;
@@ -22,22 +23,28 @@ function configIsStatic(path: string): boolean {
   const variables = new Map<string, ts.Expression>();
   let value: ts.Expression | undefined;
   for (const statement of source.statements) {
-    if (ts.isVariableStatement(statement)) for (const declaration of statement.declarationList.declarations) {
-      if (ts.isIdentifier(declaration.name) && declaration.initializer) variables.set(declaration.name.text, declaration.initializer);
-    }
-    if (ts.isExportAssignment(statement)) value = statement.expression;
-    if (ts.isExpressionStatement(statement) && ts.isBinaryExpression(statement.expression) && statement.expression.left.getText(source) === "module.exports") value = statement.expression.right;
+    if (ts.isImportDeclaration(statement) || ts.isInterfaceDeclaration(statement) || ts.isTypeAliasDeclaration(statement) || ts.isEmptyStatement(statement)) continue;
+    if (ts.isVariableStatement(statement)) {
+      if (!(statement.declarationList.flags & ts.NodeFlags.Const)) return false;
+      for (const declaration of statement.declarationList.declarations) {
+        if (!ts.isIdentifier(declaration.name) || !declaration.initializer) return false;
+        variables.set(declaration.name.text, declaration.initializer);
+      }
+    } else if (ts.isExportAssignment(statement)) value = statement.expression;
+    else if (ts.isExpressionStatement(statement) && ts.isBinaryExpression(statement.expression) && statement.expression.operatorToken.kind === ts.SyntaxKind.EqualsToken && statement.expression.left.getText(source) === "module.exports") value = statement.expression.right;
+    else return false;
   }
   if (value && ts.isIdentifier(value)) value = variables.get(value.text);
   while (value && (ts.isAsExpression(value) || ts.isSatisfiesExpression(value) || ts.isParenthesizedExpression(value))) value = value.expression;
   if (!value || !ts.isObjectLiteralExpression(value)) return false;
   // These settings can change entry discovery or resolution. They need an
   // explicit entry policy; evaluating a framework config is never required.
-  const affectsRoots = new Set(["pageExtensions", "turbopack", "webpack", "root", "build", "plugins", "resolve"]);
-  return value.properties.every((property) => !ts.isSpreadAssignment(property) && property.name && !ts.isComputedPropertyName(property.name) && !affectsRoots.has(property.name.getText(source).replace(/^["']|["']$/g, "")));
+  const safeProperties = new Set(["reactStrictMode", "poweredByHeader", "compress", "devIndicators", "productionBrowserSourceMaps", "images", "trailingSlash", "basePath", "assetPrefix", "server", "preview", "clearScreen", "logLevel", "base"]);
+  return variables.size <= 1 && value.properties.every((property) => ts.isPropertyAssignment(property) && !ts.isComputedPropertyName(property.name) && safeProperties.has(property.name.getText(source).replace(/^["']|["']$/g, "")));
 }
 
 export function discoverRoots(graph: DependencyGraph, project: ProjectContext, options: { entries?: string[]; devEntries?: string[] } = {}): RootPolicy {
+  validateAnalysisOptions(options);
   const analysisRoot = project.workspace?.root ?? project.projectRoot;
   const diagnostics: Diagnostic[] = [];
   const roots = new Map<string, EntryRoot>();

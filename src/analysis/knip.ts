@@ -9,6 +9,7 @@ import { CliError } from "../core/errors.js";
 import { canonicalJSON, digest } from "../core/hash.js";
 import { canonicalPath, isObject, isWithin } from "../project/files.js";
 import type { KnipAnalysis, KnipRun, RootPolicy } from "./types.js";
+import { validateAnalysisOptions } from "./options.js";
 
 export interface AnalysisOptions { analysisTimeoutMs?: number; signal?: AbortSignal; env?: NodeJS.ProcessEnv }
 
@@ -23,6 +24,7 @@ export function parseKnipReport(input: string, policy: RootPolicy, mode: KnipRun
     if (!isWithin(policy.analysisRoot, path)) throw new CliError("KNIP_REPORT_OUTSIDE_SCOPE", "Analysis reported a path outside its bounded project.");
     if (row.files.length) {
       if (!known.has(path)) throw new CliError("KNIP_REPORT_OUTSIDE_SCOPE", "Unused-file report includes a file outside the generated project set.");
+      if (row.files.some((value: unknown) => !isObject(value) || typeof value.name !== "string" || canonicalPath(resolve(policy.analysisRoot, value.name)) !== path)) throw new CliError("KNIP_REPORT_INVALID", "Unused-file analysis entry is invalid.");
       result.unusedFiles.push(path);
     }
     for (const issue of row.unresolved) {
@@ -45,8 +47,8 @@ export function parseKnipReport(input: string, policy: RootPolicy, mode: KnipRun
 }
 
 export async function analyzeWithKnip(policy: RootPolicy, options: AnalysisOptions = {}): Promise<KnipAnalysis> {
+  validateAnalysisOptions(options);
   const timeout = options.analysisTimeoutMs ?? 60_000;
-  if (!Number.isInteger(timeout) || timeout < 1 || timeout > 300_000) throw new CliError("INVALID_OPTIONS", "Analysis timeout must be between 1 and 300000 milliseconds.");
   const main = import.meta.resolve("knip");
   const metadata: unknown = JSON.parse(await readFile(new URL("../package.json", main), "utf8"));
   if (!isObject(metadata) || metadata.version !== "6.45.0") throw new CliError("KNIP_VERSION_UNSUPPORTED", "Audit requires pinned Knip 6.45.0.");
