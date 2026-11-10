@@ -11,6 +11,10 @@ export type { ProjectContext, Diagnostic, ResolvedAlias, Workspace, WorkspacePac
 export type { InventoryOptions } from "./inventory/build.js";
 export type { InventoryReport, InventoryItem, ItemFile, LocalFile } from "./inventory/types.js";
 export type { SourceDescriptor, RemoteItem, RemoteFile } from "./registry/types.js";
+export type { GraphOptions } from "./graph/build.js";
+export type { DependencyGraph, GraphNode, GraphEdge, EdgeKind, GraphCycle } from "./graph/types.js";
+export { graphNeighbors } from "./graph/model.js";
+export { selectGraph, formatMermaid } from "./graph/export.js";
 
 // Keep importing the API and constructing/helping the CLI free of filesystem scans.
 export async function discoverProject(
@@ -25,4 +29,11 @@ export async function buildInventory(
 ): Promise<import("./inventory/types.js").InventoryReport> {
   const inventory = await import("./inventory/build.js");
   return inventory.buildInventory(options);
+}
+
+export async function buildDependencyGraph(
+  options: import("./graph/build.js").GraphOptions = {}
+): Promise<import("./graph/types.js").DependencyGraph> {
+  const graph = await import("./graph/build.js");
+  return graph.buildDependencyGraph(options);
 }

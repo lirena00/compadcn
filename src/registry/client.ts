@@ -21,7 +21,7 @@ export interface RegistryClientOptions {
 }
 
 interface CacheEntry {
-  version: 2;
+  version: 3;
   fetchedAt: string;
   checkedAt: string;
   etag?: string;
@@ -51,7 +51,7 @@ export class RegistryClient {
   #fetch: typeof globalThis.fetch;
 
   constructor(private readonly options: RegistryClientOptions = {}) {
-    this.#cacheDir = options.cacheDir === false ? false : resolve(options.cacheDir ?? join(homedir(), ".cache", "shadcn-plus", "registry-v2"));
+    this.#cacheDir = options.cacheDir === false ? false : resolve(options.cacheDir ?? join(homedir(), ".cache", "shadcn-plus", "registry-v3"));
     this.#ttl = options.ttlMs ?? 300_000;
     this.#timeout = options.timeoutMs ?? 10_000;
     this.#maxBytes = options.maxBytes ?? 8 * 1024 * 1024;
@@ -76,16 +76,24 @@ export class RegistryClient {
     return operation;
   }
 
+  async recoverReferences(source: RegistrySource, name: string): Promise<FetchResult> {
+    const request = source.request(name);
+    const key = `item-${request.key}`;
+    const result = await this.#load(source, request, key, "item", name, true);
+    this.#settled.set(key, result);
+    return result;
+  }
+
   async #read(key: string, source: RegistrySource, kind: "catalog" | "item", name: string): Promise<CacheEntry | null> {
     if (!this.#cacheDir) return null;
     try {
       const input: unknown = JSON.parse(await readFile(join(this.#cacheDir, `${key}.json`), "utf8"));
-      if (!isObject(input) || input.version !== 2 || typeof input.fetchedAt !== "string" || typeof input.checkedAt !== "string" ||
+      if (!isObject(input) || input.version !== 3 || typeof input.fetchedAt !== "string" || typeof input.checkedAt !== "string" ||
         !Number.isFinite(Date.parse(input.fetchedAt)) || !Number.isFinite(Date.parse(input.checkedAt)) ||
         (input.etag !== undefined && typeof input.etag !== "string") || (input.lastModified !== undefined && typeof input.lastModified !== "string")) return null;
       const document = parseDocument(input.document, source, kind, true);
-      if (kind === "item" && document.items[0]?.name !== name) return null;
-      return { version: 2, fetchedAt: input.fetchedAt, checkedAt: input.checkedAt,
+      if (kind === "item" && !source.direct && document.items[0]?.name !== name) return null;
+      return { version: 3, fetchedAt: input.fetchedAt, checkedAt: input.checkedAt,
         ...(typeof input.etag === "string" ? { etag: input.etag } : {}),
         ...(typeof input.lastModified === "string" ? { lastModified: input.lastModified } : {}),
         document };
@@ -103,9 +111,9 @@ export class RegistryClient {
     } finally { await rm(temporary, { force: true }); }
   }
 
-  async #load(source: RegistrySource, request: ReturnType<RegistrySource["request"]>, key: string, kind: "catalog" | "item", name: string): Promise<FetchResult> {
+  async #load(source: RegistrySource, request: ReturnType<RegistrySource["request"]>, key: string, kind: "catalog" | "item", name: string, fresh = false): Promise<FetchResult> {
     if (this.options.signal?.aborted) throw new CliError("REGISTRY_CANCELLED", "Registry request was cancelled.");
-    const cached = await this.#read(key, source, kind, name);
+    const cached = fresh ? null : await this.#read(key, source, kind, name);
     if (cached && (this.options.offline || (!this.options.refresh && Date.now() - Date.parse(cached.checkedAt) < this.#ttl))) {
       const stale = Date.now() - Date.parse(cached.checkedAt) >= this.#ttl;
       return { document: cached.document, fetchedAt: cached.fetchedAt, cache: stale ? "stale-cache" : "fresh-cache",
@@ -132,11 +140,11 @@ export class RegistryClient {
       }
       const input = await this.#json(response);
       const document = parseDocument(input, source, kind);
-      if (kind === "item" && document.items[0]?.name !== name) throw new CliError("REGISTRY_ITEM_MISMATCH", "Requested manifest returned a different item name.");
+      if (kind === "item" && !source.direct && document.items[0]?.name !== name) throw new CliError("REGISTRY_ITEM_MISMATCH", "Requested manifest returned a different item name.");
       const now = new Date().toISOString();
       const etag = response.headers.get("etag");
       const lastModified = response.headers.get("last-modified");
-      const entry: CacheEntry = { version: 2, fetchedAt: now, checkedAt: now, document,
+      const entry: CacheEntry = { version: 3, fetchedAt: now, checkedAt: now, document,
         ...(etag ? { etag: source.redact(etag) } : {}), ...(lastModified ? { lastModified: source.redact(lastModified) } : {}) };
       let diagnostic;
       try { await this.#write(key, entry); } catch { diagnostic = { code: "REGISTRY_CACHE_WRITE_FAILED", severity: "warning" as const, message: "Registry metadata was fetched but could not be cached." }; }

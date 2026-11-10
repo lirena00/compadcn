@@ -36,7 +36,7 @@ function scopes(project: ProjectContext, workspace: boolean): string[] {
   return [...roots];
 }
 
-function makeItem(item: RemoteItem, source: RegistrySource, context: ProjectContext, inCatalog: boolean, manifest: InventoryItem["manifest"]): InventoryItem {
+export function makeItem(item: RemoteItem, source: RegistrySource, context: ProjectContext, inCatalog: boolean, manifest: InventoryItem["manifest"]): InventoryItem {
   const mappedFiles = item.files.map((file) => mapFile(file, context));
   const diagnostics = mappedFiles.flatMap((file) => file.diagnostic ? [file.diagnostic] : []);
   const resolved = mappedFiles.flatMap(({ path }) => path ? [path] : []);
@@ -54,6 +54,12 @@ function makeItem(item: RemoteItem, source: RegistrySource, context: ProjectCont
 }
 
 export async function buildInventory(options: InventoryOptions = {}): Promise<InventoryReport> {
+  return (await createInventorySession(options)).report;
+}
+
+export async function createInventorySession(options: InventoryOptions = {}): Promise<{
+  report: InventoryReport; contexts: Map<string, ProjectContext>; sources: RegistrySource[]; client: RegistryClient; selected: ProjectContext;
+}> {
   const concurrency = options.concurrency ?? 4;
   if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 16 || (options.offline && options.refresh)) {
     throw new CliError("INVALID_OPTIONS", "Use concurrency 1-16, and choose either offline or refresh mode.");
@@ -136,7 +142,7 @@ export async function buildInventory(options: InventoryOptions = {}): Promise<In
   const localFiles = [...files.values()].sort((a, b) => a.path.localeCompare(b.path));
   const complete = !diagnostics.some(({ severity }) => severity === "error") && catalogs.every(({ status }) => status === "ready") &&
     items.every((item) => item.manifest !== "error" && item.manifest !== "stale" && !item.diagnostics.some(({ severity }) => severity === "error"));
-  return {
+  const report: InventoryReport = {
     projectRoot: selected.projectRoot, scopes: roots,
     sources: catalogs.map(({ items, ...catalog }) => ({ ...catalog, itemCount: items.length,
       ...(catalog.fetchedAt ? { ageMs: Math.max(0, Date.now() - Date.parse(catalog.fetchedAt)) } : {}) })),
@@ -151,4 +157,5 @@ export async function buildInventory(options: InventoryOptions = {}): Promise<In
       unknownFiles: localFiles.filter(({ origin }) => origin === "unknown").length,
     }, diagnostics, complete,
   };
+  return { report, contexts, sources, client, selected };
 }

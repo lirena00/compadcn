@@ -25,7 +25,19 @@ export interface RemoteItem {
   files: RemoteFile[];
   dependencies: string[];
   devDependencies: string[];
-  registryDependencies: { id: string; reference: string }[];
+  registryDependencies: RegistryReference[];
+  resources?: ResourceDeclaration[];
+}
+
+export interface RegistryReference {
+  id: string;
+  reference: string;
+  requiresOriginal?: boolean;
+}
+
+export interface ResourceDeclaration {
+  kind: "css" | "cssVars" | "tailwind" | "envVars" | "config" | "font";
+  fingerprint: string;
 }
 
 export interface RegistryDocument {

@@ -35,6 +35,9 @@ importers:
       tinyglobby:
         specifier: ^0.2.17
         version: 0.2.17
+      typescript:
+        specifier: 5.8.3
+        version: 5.8.3
       yaml:
         specifier: ^2.9.1
         version: 2.9.1
@@ -48,9 +51,6 @@ importers:
       tsx:
         specifier: ^4.20.3
         version: 4.20.3
-      typescript:
-        specifier: ^5.8.3
-        version: 5.8.3
 
 packages:
 

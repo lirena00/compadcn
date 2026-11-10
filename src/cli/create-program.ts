@@ -29,13 +29,13 @@ export function createProgram(options: ProgramOptions = {}): Command {
     const outputOptions = program.opts<OutputOptions>();
     validateOutputOptions(outputOptions);
     if (command === program) return;
-    if (command === doctorCommand || command === inventoryCommand) return;
+    if (command === doctorCommand || command === inventoryCommand || command === graphCommand) return;
 
     if (outputOptions.json || outputOptions.plain) {
       throw new CliError(
         "OUTPUT_MODE_UNSUPPORTED",
         "This legacy workflow does not support --json or --plain yet. " +
-          "Doctor, inventory, help, and version output support both modes."
+          "Doctor, inventory, graph, help, and version output support both modes."
       );
     }
 
@@ -83,6 +83,31 @@ export function createProgram(options: ProgramOptions = {}): Command {
     .action(async (inventoryOptions) => {
       const { runInventory } = await import("./inventory.js");
       await runInventory(inventoryOptions, program.opts<OutputOptions>());
+    });
+
+  const graphCommand = program
+    .command("graph")
+    .description("Graph registry declarations and observed local imports")
+    .option("-c, --cwd <path>", "Target project or workspace package", ".")
+    .option("--workspace", "Include all workspace consumers and configured registries")
+    .option("--scope <scope>", "Graph seed scope: installed or catalog", "installed")
+    .option("--item <address>", "Select an @namespace/item, official bare name, or HTTP(S) item URL (repeatable)",
+      (value: string, previous: string[]) => [...previous, value], [])
+    .option("--offline", "Read cached registry metadata without network requests")
+    .option("--refresh", "Revalidate cached registry metadata")
+    .option("--no-cache", "Disable persistent registry caching")
+    .option("--cache-dir <path>", "Registry metadata cache directory")
+    .option("-j, --concurrency <number>", "Maximum concurrent registry operations (1-16)", "4")
+    .option("--timeout <milliseconds>", "Timeout per request attempt (maximum 60000)", "10000")
+    .option("--max-items <number>", "Registry closure limit (1-10000)", "2000")
+    .option("--max-files <number>", "Source parsing limit (1-100000)", "20000")
+    .option("--mermaid", "Export Mermaid text (included in the envelope with --json)")
+    .option("--focus <reference>", "Show a node and its direct dependencies by address, path, label, or ID")
+    .option("--reverse", "Show dependents in a focused view")
+    .option("--transitive", "Traverse the full dependency/dependent closure in a focused view")
+    .action(async (graphOptions) => {
+      const { runGraph } = await import("./graph.js");
+      await runGraph(graphOptions, program.opts<OutputOptions>());
     });
 
   const presetCommand = program
