@@ -37,6 +37,28 @@ test("missing presets exit nonzero instead of printing an error and succeeding",
   assert.equal(existsSync(join(cwd, ".compadcn")), false);
 });
 
+for (const name of ["constructor", "__proto__", "toString"]) {
+  test(`inherited object properties are not installed presets: ${name}`, (t) => {
+    const cwd = project(t);
+    for (const action of ["show", "delete"]) {
+      const result = run(cwd, ["preset", action, name]);
+      assert.equal(result.status, 2);
+      assert.match(result.stderr, /ERROR PRESET_NOT_FOUND:/);
+      assert.doesNotMatch(result.stdout, /deleted successfully/);
+    }
+    assert.equal(existsSync(join(cwd, ".compadcn")), false);
+  });
+}
+
+test("an actual custom preset with an inherited-property name still resolves", (t) => {
+  const cwd = project(t, { [store]: JSON.stringify({ presets: {
+    constructor: { id: "constructor", label: "Custom constructor", description: "", components: [], createdAt: "2026-11-10" },
+  } }) });
+  const result = run(cwd, ["preset", "show", "constructor"], {}, false);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /Custom constructor/);
+});
+
 test("listing presets does not create storage on a read-only path", (t) => {
   const cwd = project(t);
   const result = run(cwd, ["preset", "list"], {}, false);

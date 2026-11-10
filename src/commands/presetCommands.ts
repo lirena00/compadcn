@@ -336,7 +336,8 @@ export async function deletePreset(presetName: string) {
   const customPresets = loadCustomPresets();
 
   let presetId = presetName;
-  let preset = customPresets.presets[presetId];
+  let preset = Object.hasOwn(customPresets.presets, presetId)
+    ? customPresets.presets[presetId] : undefined;
 
   if (!preset) {
     const presetEntry = Object.entries(customPresets.presets).find(

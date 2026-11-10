@@ -9,7 +9,7 @@ export async function findPreset(
   const builtinPresets = presets.presets;
 
   // Check builtin presets by ID
-  if (builtinPresets[presetName]) {
+  if (Object.hasOwn(builtinPresets, presetName) && builtinPresets[presetName]) {
     return {
       ...builtinPresets[presetName],
       id: presetName,
@@ -32,7 +32,7 @@ export async function findPreset(
   const customPresets = loadCustomPresets();
 
   // Check custom presets by ID
-  if (customPresets.presets[presetName]) {
+  if (Object.hasOwn(customPresets.presets, presetName) && customPresets.presets[presetName]) {
     return {
       ...customPresets.presets[presetName],
       id: presetName,

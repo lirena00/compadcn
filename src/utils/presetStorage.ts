@@ -78,6 +78,9 @@ export const saveCustomPreset = (
 
 export const deleteCustomPreset = (id: string): void => {
   const customPresets = loadCustomPresets();
+  if (!Object.hasOwn(customPresets.presets, id)) {
+    throw new CliError("PRESET_NOT_FOUND", `Custom preset "${id}" not found.`);
+  }
   delete customPresets.presets[id];
   writeFileSync(PRESETS_FILE, JSON.stringify(customPresets, null, 2));
 };
