@@ -1,11 +1,11 @@
 {
-  "name": "compadcn",
-  "version": "1.0.1",
-  "description": "CLI for installing and managing ShadCN UI components",
+  "name": "shadcn-plus",
+  "version": "2.0.0",
+  "description": "CLI for installing and managing shadcn/ui components and presets",
   "type": "module",
-  "main": "index.js",
+  "main": "./dist/index.js",
   "bin": {
-    "compadcn": "./dist/index.js"
+    "shadcn-plus": "./dist/cli.js"
   },
   "exports": {
     ".": {
@@ -18,12 +18,13 @@
   ],
   "scripts": {
     "build": "tsc",
-    "dev": "tsx src/index.ts",
-    "dev:watch": "tsx watch src/index.ts",
+    "dev": "tsx src/cli.ts",
+    "dev:watch": "tsx watch src/cli.ts",
     "typecheck": "tsc --noEmit",
     "clean": "rimraf dist",
     "prepublishOnly": "pnpm run clean && pnpm run build",
-    "link-cli": "pnpm run build && pnpm unlink --global && pnpm link --global"
+    "link-cli": "pnpm run build && pnpm unlink --global && pnpm link --global",
+    "test": "pnpm run build && node --test"
   },
   "keywords": [
     "cli",
@@ -34,8 +35,17 @@
   ],
   "author": "",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lirena00/compadcn.git"
+  },
+  "homepage": "https://github.com/lirena00/compadcn#readme",
+  "bugs": {
+    "url": "https://github.com/lirena00/compadcn/issues"
+  },
+  "packageManager": "pnpm@10.13.1",
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=22.12.0"
   },
   "devDependencies": {
     "@types/node": "^24.0.1",

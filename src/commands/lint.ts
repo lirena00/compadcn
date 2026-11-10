@@ -74,7 +74,7 @@ export async function runLintUI() {
         );
       }
     } else {
-      const removeCommand = `compadcn remove ${unusedComponents.join(" ")}`;
+      const removeCommand = `shadcn-plus remove ${unusedComponents.join(" ")}`;
       note(chalk.cyan(removeCommand), "Command to remove unused components");
 
       outro(

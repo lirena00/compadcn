@@ -1,6 +1,8 @@
-# compadcn
+# shadcn-plus
 
-A powerful CLI tool for installing and managing ShadCN UI components with preset functionality.
+A CLI for installing and managing shadcn/ui components and presets, formerly named compadcn.
+
+V2 is under development. This checkout retains the existing component and preset commands while its new foundations are implemented. Multi-registry auditing and cleanup plans are not implemented yet.
 
 ## Features
 
@@ -10,40 +12,76 @@ A powerful CLI tool for installing and managing ShadCN UI components with preset
 - **Dependency removal** - Optionally remove unused dependencies when components are deleted
 - **Custom presets** - Create and save your own component collections
 
-## Installation
+## Local development
 
 ```bash
-npm install -g compadcn
+pnpm install --frozen-lockfile
+pnpm run build
+node dist/cli.js --help
+pnpm test
+```
+
+The package exports `createProgram` and `runCli` for integration without starting
+the executable on import. `runCli(argv)` returns an exit code; only the executable
+sets the process exit code.
+
+## Output and automation
+
+```bash
+shadcn-plus --plain --help
+shadcn-plus --json --version
+shadcn-plus --json preset show --help
+```
+
+Put output options before `--help` or `--version`, which complete parsing
+immediately. JSON responses contain `schemaVersion`, `toolVersion`, `status`, and
+either `data` or `error`. Plain CLI errors go to stderr; JSON errors are returned
+as one structured response on stdout. Parser/runner errors return exit code `2`.
+
+Help, version, and CLI errors support these output modes. Existing component and
+preset workflows do not yet support `--json` or `--plain`; they return
+`OUTPUT_MODE_UNSUPPORTED` instead of mixing terminal text with machine output.
+Workflows requiring prompts fail with `INTERACTIVE_REQUIRED` when no interactive
+terminal is available or `--no-interactive` is set. `preset list` and `preset show`
+remain available without prompts. Their legacy internal error handling will be
+converted with the remaining workflows.
+
+## Installation
+
+Once the renamed package is published:
+
+```bash
+npm install -g shadcn-plus
 # or
-pnpm add -g compadcn
+pnpm add -g shadcn-plus
 # or
-yarn global add compadcn
+yarn global add shadcn-plus
 ```
 
 ## Commands
 
-### `compadcn add [components...]`
+### `shadcn-plus add [components...]`
 
 Add ShadCN components to your project.
 
 ```bash
 # Interactive mode - select components from a non installed components list
-compadcn add
+shadcn-plus add
 
 # Add specific components
-compadcn add button card dialog
+shadcn-plus add button card dialog
 ```
 
-### `compadcn remove [components...]`
+### `shadcn-plus remove [components...]`
 
 Remove ShadCN components from your project.
 
 ```bash
 # Interactive mode - select installed components to remove
-compadcn remove
+shadcn-plus remove
 
 # Remove specific components
-compadcn remove button card
+shadcn-plus remove button card
 ```
 
 **Features:**
@@ -54,12 +92,12 @@ compadcn remove button card
 - Optional dependency removal
 - Validates internal dependencies before removal
 
-### `compadcn lint`
+### `shadcn-plus lint`
 
 Find and remove unused ShadCN components from your project.
 
 ```bash
-compadcn lint
+shadcn-plus lint
 ```
 
 **Features:**
@@ -69,44 +107,44 @@ compadcn lint
 - Option to automatically remove unused components
 - Provides removal commands for manual cleanup
 
-### `compadcn preset`
+### `shadcn-plus preset`
 
 Manage component presets - collections of commonly used components.
 
 ```bash
 # Interactive preset manager
-compadcn preset
+shadcn-plus preset
 ```
 
 #### Preset Subcommands
 
 ```bash
 # List all available presets
-compadcn preset list
-compadcn preset list --builtin    # Show only builtin presets
-compadcn preset list --custom     # Show only custom presets
+shadcn-plus preset list
+shadcn-plus preset list --builtin    # Show only builtin presets
+shadcn-plus preset list --custom     # Show only custom presets
 
 # Show components in a preset
-compadcn preset show core
-compadcn preset show "My Custom Preset"
+shadcn-plus preset show core
+shadcn-plus preset show "My Custom Preset"
 
 # Install all components from a preset
-compadcn preset install dashboard
-compadcn preset install mobile
+shadcn-plus preset install dashboard
+shadcn-plus preset install mobile
 
 # Create a custom preset
-compadcn preset create "my-preset" button card input
-compadcn preset create "my-preset" --description "My custom components"
-compadcn preset create "my-preset" --base core,form  # Extend multiple existing presets
-compadcn preset create "dashboard-mobile" --base dashboard,mobile --description "Mobile dashboard components"
+shadcn-plus preset create "my-preset" button card input
+shadcn-plus preset create "my-preset" --description "My custom components"
+shadcn-plus preset create "my-preset" --base core,form  # Extend multiple existing presets
+shadcn-plus preset create "dashboard-mobile" --base dashboard,mobile --description "Mobile dashboard components"
 
 # Delete a custom preset
-compadcn preset delete "my-preset"
+shadcn-plus preset delete "my-preset"
 ```
 
 ## Requirements
 
-- Node.js 18.0.0 or higher
+- Node.js 22.12.0 or higher
 - A ShadCN project with `components.json` file
 - Package manager: npm, pnpm, yarn, or bun
 
@@ -120,7 +158,7 @@ compadcn preset delete "my-preset"
 
 ## File Structure
 
-compadcn works with the standard ShadCN project structure:
+shadcn-plus works with the standard ShadCN project structure:
 
 ```
 your-project/
@@ -136,7 +174,8 @@ your-project/
 
 ## Custom Presets
 
-Custom presets are stored in `~/.compadcn/custom-presets.json` and can be:
+Custom presets continue to use the existing `~/.compadcn/custom-presets.json`
+storage until an explicit migration is implemented. They can be:
 
 - Created from scratch
 - Based on existing presets
@@ -145,7 +184,7 @@ Custom presets are stored in `~/.compadcn/custom-presets.json` and can be:
 ## Contributing
 
 1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+2. Create your feature branch (`git checkout -b feat/amazing-feature`)
 3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
+4. Push to the branch (`git push origin feat/amazing-feature`)
 5. Open a Pull Request
