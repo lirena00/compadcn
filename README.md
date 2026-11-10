@@ -38,7 +38,7 @@ immediately. JSON responses contain `schemaVersion`, `toolVersion`, `status`, an
 either `data` or `error`. Plain CLI errors go to stderr; JSON errors are returned
 as one structured response on stdout. Parser/runner errors return exit code `2`.
 
-Doctor, inventory, help, version, and CLI errors support these output modes. Existing component and
+Doctor, inventory, graph, help, version, and CLI errors support these output modes. Existing component and
 preset workflows do not yet support `--json` or `--plain`; they return
 `OUTPUT_MODE_UNSUPPORTED` instead of mixing terminal text with machine output.
 Workflows requiring prompts fail with `INTERACTIVE_REQUIRED` when no interactive
@@ -75,7 +75,7 @@ shadcn-plus --plain doctor --cwd ./src/features
 Doctor selects the nearest `package.json` from the chosen directory, stopping at
 the Git/worktree boundary. At a workspace root, select the intended app/package
 with `doctor --cwd`; it does not choose an app automatically. `--cwd` currently
-is available on `doctor` and `inventory`.
+is available on `doctor`, `inventory`, and `graph`.
 
 It reports the framework inferred from dependencies, conventional source folders,
 package manager and its metadata location, workspace members, compiler configs,
@@ -104,7 +104,7 @@ contents and registry authentication values are excluded from the report.
 
 The API exposes `await discoverProject({ cwd })` with the same context and
 diagnostics, without changing `process.cwd()`. This service is the foundation for
-the upcoming inventory/graph commands. Existing component workflows still use
+the inventory/graph commands. Existing component workflows still use
 their legacy discovery and cleanup behavior until those units are implemented.
 
 ### `shadcn-plus inventory`
@@ -170,9 +170,81 @@ limits preserve incomplete coverage rather than reporting an empty clean invento
 
 The API exposes `await buildInventory({ cwd, offline, cacheDir, items })`. Inventory
 is read-only with respect to project files; its metadata cache is the only write.
-Legacy add/preset/lint/remove commands keep their existing behavior. Dependency
-graph construction, usage analysis, ownership adoption, and cleanup plans follow
-in separate implementation units.
+Legacy add/preset/lint/remove commands keep their existing behavior. Usage
+analysis, ownership adoption, and cleanup plans follow in separate implementation
+units.
+
+### `shadcn-plus graph`
+
+Build a dependency snapshot from inventory and local source references:
+
+```bash
+shadcn-plus graph --cwd ./apps/web --json
+shadcn-plus graph --workspace --mermaid > dependencies.mmd
+shadcn-plus graph --scope catalog --item @company/dashboard --json
+shadcn-plus graph --focus @company/dashboard --transitive --plain
+shadcn-plus graph --focus src/components/ui/button.tsx --reverse --transitive --json
+shadcn-plus graph --offline --json
+```
+
+Installed scope is the default: seeds are item candidates with observed local
+files, followed by their registry dependency closure. Catalog scope seeds available
+items; repeated `--item` selects specific seeds. Bare names resolve to the official
+`@shadcn` binding in that package, including when declared by a custom registry.
+Namespaced dependencies retain their package's configuration. HTTP(S) item URLs
+use their own request context and never inherit another registry's headers.
+GitHub repository/source addresses and relative registry dependencies currently
+produce explicit unresolved relationships.
+
+The graph distinguishes registry dependency declarations, candidate file ownership,
+observed file imports, observed npm imports, built-ins, declared npm specifications,
+and retained CSS/theme/config/env/font effects. Registry relationships do not imply
+that customized code still imports a dependency. Package nodes represent requests
+and observed import names; no lockfile-installed version is inferred. Presence,
+origin confidence, fetch status, and unresolved nodes remain visible. Shared files
+have one file node; item nodes retain workspace bindings.
+
+The pinned TypeScript 5.8.3 compiler API parses JS/TS/JSX/TSX imports, re-exports,
+barrels, literal dynamic imports, literal CommonJS references, and type-only
+references. Evidence includes one-based source locations and syntax. Resolution
+covers TS/JS paths, applicable Vite references, package imports, and unlinked
+workspace exports. Comments do not create edges. Computed imports/requires, module
+globs, unresolved mappings, and unsupported MDX/Vue/Svelte parsing make source
+coverage incomplete. Non-code imported files are retained without interpreting
+their internal dependencies. Framework configs are not executed.
+
+By default source scanning covers the selected inventory scopes; `--workspace`
+also scans workspace consumers without their own `components.json`. This command
+does not identify application entry points, classify unused components, or establish
+cleanup eligibility. `coverage.usage` is `not-analyzed`; those decisions belong to
+the later audit service. Shared effects and unsupported resources remain retained.
+
+JSON contains a graph version, deterministic content snapshot ID, typed nodes and
+edges, direct dependency/dependent indexes, source/registry cycles with edge IDs,
+coverage flags, and diagnostics. `--focus` selects a direct neighborhood;
+`--reverse` selects dependents, and `--transitive` follows the full closure. Ambiguous
+names return node choices instead of picking a workspace. A focused view includes
+its base snapshot ID. Mermaid uses opaque node IDs and encoded labels, with edge
+kinds/phases and cycle/unresolved markers from the same graph. `--json --mermaid`
+includes the diagram text in the structured response.
+
+Graphs are bounded by `--max-items` (default 2,000) and `--max-files` (default
+20,000); files above 2 MiB are not parsed. Hitting a limit returns partial coverage.
+Cycles are detected iteratively, including self-loops. Incomplete JSON uses exit
+code `2`, code `GRAPH_INCOMPLETE`, and `error.details.graph`. Plain diagnostics go
+to stderr. Mermaid text remains on stdout with diagnostics on stderr and exit `2`
+when coverage is incomplete, so the diagram artifact remains usable.
+
+Opaque URL dependency credentials are kept only in memory. Cache v3 stores safe
+references and effect fingerprints; older cache projections are not reused.
+Online traversal can re-fetch a parent manifest to recover an opaque URL. Offline
+traversal reports an unresolved edge when that original address is unavailable.
+Project files are never modified; only the registry metadata cache may be written.
+
+The API exposes `await buildDependencyGraph(options)`, `graphNeighbors(graph, id,
+{ direction: "dependents", transitive: true })`, `selectGraph`, and `formatMermaid`.
+Help/version/API imports remain lazy with respect to source scanning and the
+TypeScript runtime.
 
 ### `shadcn-plus add [components...]`
 
