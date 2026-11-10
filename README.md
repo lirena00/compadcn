@@ -148,6 +148,11 @@ shadcn-plus preset delete "my-preset"
 - A ShadCN project with `components.json` file
 - Package manager: npm, pnpm, yarn, or bun
 
+Package-manager detection uses the nearest project's `packageManager` field or
+lockfile before the launcher environment. It supports `bun.lock` and `bun.lockb`,
+and reports conflicting declarations/lockfiles instead of choosing silently.
+The installer runners use npm/npx, pnpm dlx, modern Yarn dlx, or Bun bunx.
+
 ## How It Works
 
 1. **Component Detection**: Reads your `components.json` file to understand your project structure

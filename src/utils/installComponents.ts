@@ -19,8 +19,6 @@ const buildInstallCommand = (
     baseArgs.push("--no-css-variables");
   }
 
-  baseArgs.push(...components);
-
   switch (packageManager) {
     case "pnpm":
       return { command: "pnpm", args: ["dlx", ...baseArgs] };
