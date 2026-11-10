@@ -29,13 +29,13 @@ export function createProgram(options: ProgramOptions = {}): Command {
     const outputOptions = program.opts<OutputOptions>();
     validateOutputOptions(outputOptions);
     if (command === program) return;
-    if (command === doctorCommand) return;
+    if (command === doctorCommand || command === inventoryCommand) return;
 
     if (outputOptions.json || outputOptions.plain) {
       throw new CliError(
         "OUTPUT_MODE_UNSUPPORTED",
         "This legacy workflow does not support --json or --plain yet. " +
-          "Doctor, help, and version output support both modes."
+          "Doctor, inventory, help, and version output support both modes."
       );
     }
 
@@ -65,6 +65,24 @@ export function createProgram(options: ProgramOptions = {}): Command {
     .action(async (doctorOptions: { cwd: string }) => {
       const { runDoctor } = await import("./doctor.js");
       runDoctor(doctorOptions.cwd, program.opts<OutputOptions>());
+    });
+
+  const inventoryCommand = program
+    .command("inventory")
+    .description("Inspect configured catalogs and local file ownership candidates")
+    .option("-c, --cwd <path>", "Target project or workspace package", ".")
+    .option("--workspace", "Include all configured workspace packages")
+    .option("--item <address>", "Inspect a known @namespace/item in the target package (repeatable)",
+      (value: string, previous: string[]) => [...previous, value], [])
+    .option("--offline", "Read cached registry metadata without network requests")
+    .option("--refresh", "Revalidate cached registry metadata")
+    .option("--no-cache", "Disable persistent registry caching")
+    .option("--cache-dir <path>", "Registry metadata cache directory")
+    .option("-j, --concurrency <number>", "Maximum concurrent registry operations (1-16)", "4")
+    .option("--timeout <milliseconds>", "Timeout per request attempt (maximum 60000)", "10000")
+    .action(async (inventoryOptions) => {
+      const { runInventory } = await import("./inventory.js");
+      await runInventory(inventoryOptions, program.opts<OutputOptions>());
     });
 
   const presetCommand = program
