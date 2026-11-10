@@ -85,7 +85,7 @@ test("Knip/reference disagreement is retained and can be resolved with explicit 
 
 test("public workspace contracts are retained and all consumers are inspected by default",async(t)=>{
   const server=await registryServer(t,(req,res)=>json(res,req.url.includes("registry.json")?catalog([item("public")]):item("public")));
-  const root=createProject(t,{"package.json":'{"workspaces":["apps/*","packages/*"]}',
+  const root=createProject(t,{"package.json":'{"workspaces":["apps/*","packages/*"]}',"eslint.config.ts":"export default {};",
     "apps/web/package.json":'{"name":"web","dependencies":{"react":"19","vite":"7"}}',"apps/web/index.html":'<script type="module" src="/src/main.tsx"></script>',"apps/web/src/main.tsx":"export const App=1;",
     "packages/ui/package.json":'{"name":"@workspace/ui","exports":{"./ui/*":"./ui/*.tsx"}}',
     "packages/ui/components.json":JSON.stringify({aliases:{ui:"./ui"},registries:{"@shadcn":`${server.url}/{name}.json`}}),"packages/ui/ui/public.tsx":"export const Value=1;"});
@@ -101,6 +101,35 @@ test("public workspace contracts are retained and all consumers are inspected by
   assert.equal(restricted.counts.unusedCandidates,0);
 });
 
+test("real Next route entries retain imported components while unreachable components remain candidates",async(t)=>{
+  const {root}=await fixture(t,undefined,{
+    "package.json":'{"dependencies":{"next":"16","react":"19"}}',
+    "src/app/(dashboard)/page.tsx":'import {Value} from "../../../ui/used";export default function Page(){return Value;}',
+    "src/app/(dashboard)/[...parts]/page.tsx":'import {Value} from "../../../../ui/used";export default function Page(){return Value;}',
+  });
+  const report=await auditProject({cwd:root,cacheDir:false});
+  assert.equal(report.complete,true,JSON.stringify(report.diagnostics));
+  assert.equal(byName(report,"used").usage,"runtime");
+  assert.equal(byName(report,"used").proof.reason,"next-route");
+  assert.equal(byName(report,"unused").usage,"unused-candidate");
+});
+
+test("real Vite React JavaScript entries audit converted JSX registry destinations",async(t)=>{
+  const values=[item("used"),item("unused")];
+  const server=await registryServer(t,(req,res)=>json(res,req.url.includes("registry.json")?catalog(values):values.find(({name})=>req.url.split("/").at(-1)===`${name}.json`)));
+  const root=createProject(t,{
+    "package.json":'{"dependencies":{"vite":"7","react":"19"}}',
+    "components.json":JSON.stringify({tsx:false,aliases:{ui:"./ui"},registries:{"@custom":`${server.url}/{name}.json`,"@shadcn":`${server.url}/{name}.json`}}),
+    "index.html":'<script type="module" src="/src/main.jsx"></script>',
+    "src/main.jsx":'import {Value} from "../ui/used.jsx";console.log(Value);',"ui/used.jsx":"export const Value=1;","ui/unused.jsx":"export const Value=1;",
+  });
+  const report=await auditProject({cwd:root,cacheDir:false});
+  assert.equal(report.complete,true,JSON.stringify(report.diagnostics));
+  assert.equal(byName(report,"used").usage,"runtime");
+  assert.equal(byName(report,"unused").usage,"unused-candidate");
+  assert.ok(report.files.every(({path})=>path.endsWith(".jsx")));
+});
+
 test("snapshot IDs ignore analysis timings and why rejects missing findings",async(t)=>{
   const {root}=await fixture(t);
   const cache=createProject(t);
@@ -109,6 +138,25 @@ test("snapshot IDs ignore analysis timings and why rejects missing findings",asy
   assert.equal(first.snapshotId,second.snapshotId);
   assert.equal(explainAudit(first,"ui/used.tsx").target.kind,"file");
   assert.throws(()=>explainAudit(first,"not-installed"),{code:"WHY_NOT_FOUND"});
+});
+
+test("workspace root registries and consumers are covered alongside member packages",async(t)=>{
+  const values=[item("root"),item("shared")];
+  const server=await registryServer(t,(req,res)=>json(res,req.url.includes("registry.json")?catalog(values):values.find(({name})=>req.url.split("/").at(-1)===`${name}.json`)));
+  const config=JSON.stringify({aliases:{ui:"./ui"},registries:{"@shadcn":`${server.url}/{name}.json`}});
+  const root=createProject(t,{
+    "package.json":'{"workspaces":["apps/*","packages/*"]}',"components.json":config,
+    "src/main.tsx":'import {Value} from "../ui/root";console.log(Value);',"ui/root.tsx":"export const Value=1;",
+    "apps/web/package.json":'{"name":"web","dependencies":{"react":"19","@workspace/ui":"workspace:*"}}',
+    "apps/web/src/main.tsx":'import {Value} from "@workspace/ui/shared";console.log(Value);',
+    "packages/ui/package.json":'{"name":"@workspace/ui","exports":{"./*":"./ui/*.tsx"}}',"packages/ui/components.json":config,
+    "packages/ui/ui/shared.tsx":"export const Value=1;",
+  });
+  const report=await auditProject({cwd:join(root,"apps/web"),cacheDir:false});
+  assert.equal(report.complete,true,JSON.stringify(report.diagnostics));
+  assert.equal(report.counts.runtime,2);
+  assert.ok(report.scopes.includes(root));
+  assert.equal(report.items.find(({addresses})=>addresses.includes("@shadcn/shared")).proof.root,join(root,"apps/web/src/main.tsx"));
 });
 
 test("related packages are candidates only when no runtime, development, or retained consumer requires them",async(t)=>{

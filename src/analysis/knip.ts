@@ -58,7 +58,9 @@ export async function analyzeWithKnip(policy: RootPolicy, options: AnalysisOptio
   const obsolete = new Set(["node-test-runner", "tanstack-start"]);
   const plugins = Object.fromEntries(Object.keys(schema.definitions.plugins.properties).filter((name) => !obsolete.has(name)).map((name) => [name, false]));
   const workspaces = Object.fromEntries(policy.scopes.map((scope) => {
-    const local = (path: string) => convertPathToPattern(relative(scope.root, path));
+    // Normalize native separators before escaping glob characters. On Windows,
+    // a separator before '(' or '[' otherwise looks like an existing escape.
+    const local = (path: string) => convertPathToPattern(relative(scope.root, path).replaceAll("\\", "/"));
     const roots = policy.roots.filter((root) => root.scope === scope.root);
     return [relative(policy.analysisRoot, scope.root).replaceAll("\\", "/") || ".", {
       entry: roots.map((root) => local(root.path) + (root.role === "development" ? "" : "!")),

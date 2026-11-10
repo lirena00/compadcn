@@ -76,6 +76,13 @@ test("HTML comments/templates cannot fabricate roots and inline imports are pars
   assert.deepEqual(roots.roots.filter(({ role }) => role === "runtime").map(({ path }) => path), [join(root, "src/main.tsx")]);
 });
 
+test("unindexed inline HTML package use prevents a clean absence claim", (t) => {
+  const root=project(t,{"index.html":'<script type="module">import "./src/main.tsx";import "react";</script>'});
+  const roots=policy(root);
+  assert.equal(roots.complete,false);
+  assert.ok(roots.diagnostics.some(({code})=>code==="HTML_ENTRY_UNRESOLVED"));
+});
+
 test("dynamic framework entry settings require an explicit policy rather than execution", (t) => {
   const root = project(t, { "vite.config.ts": 'export default {build:{rollupOptions:{input:"custom.html"}}};' });
   assert.ok(policy(root).diagnostics.some(({ code }) => code === "FRAMEWORK_ENTRY_POLICY_REQUIRED"));

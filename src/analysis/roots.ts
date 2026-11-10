@@ -119,6 +119,7 @@ export function discoverRoots(graph: DependencyGraph, project: ProjectContext, o
                   if (!reference.specifier) throw new Error("Computed inline module");
                   const target = resolver.resolve(reference.specifier, html);
                   if (target.kind === "file") add(target.path, scope, "runtime", "html-inline-import");
+                  else if (target.kind === "package") throw new Error("Inline package use needs source-module evidence");
                 }
               }
             } catch { diagnostics.push({ code: "HTML_ENTRY_UNRESOLVED", severity: "error", message: "HTML module entry cannot be resolved within the analyzed project.", path: html }); }
@@ -131,7 +132,8 @@ export function discoverRoots(graph: DependencyGraph, project: ProjectContext, o
     if (!explicitHere.length) for (const path of scoped.filter((path) => /^(?:next|vite)\.config\./.test(basename(path)))) {
       if (!configIsStatic(path)) diagnostics.push({ code: "FRAMEWORK_ENTRY_POLICY_REQUIRED", severity: "error", message: "Framework config can alter entries or aliases; provide explicit --entry patterns. The config was not executed.", path });
     }
-    if (scoped.length && !publicContract && ![...roots.values()].some((root) => root.scope === scope && root.role === "runtime")) {
+    const developmentRoots = new Set([...roots.values()].filter((root) => root.scope === scope && root.role === "development").map(({path})=>path));
+    if (scoped.some((path)=>!developmentRoots.has(path)) && !publicContract && ![...roots.values()].some((root) => root.scope === scope && root.role === "runtime")) {
       diagnostics.push({ code: "RUNTIME_ROOTS_UNKNOWN", severity: "error", message: "No supported runtime entry was found; provide --entry patterns for this scope.", path: scope });
     }
     return { root: scope, files: scoped, publicContract };

@@ -25,7 +25,8 @@ function configured(root: string): boolean {
 function scopes(project: ProjectContext, workspace: boolean): string[] {
   const packages = project.workspace?.packages ?? [];
   if (workspace) {
-    const roots = packages.filter(({ root }) => configured(root)).map(({ root }) => root);
+    const candidates = project.workspace ? [project.workspace.root, ...packages.map(({ root }) => root)] : [project.projectRoot];
+    const roots = [...new Set(candidates)].filter(configured);
     return roots.length ? roots : [project.projectRoot];
   }
   const roots = new Set([project.projectRoot]);
