@@ -10,6 +10,13 @@ import type { ItemFile, LocalFile } from "./types.js";
 
 const ignored = ["node_modules", ".git", ".next", ".turbo", "dist", "build", "coverage", ".cache"].map((name) => `**/${name}/**`);
 
+function directoryExists(path: string): boolean {
+  try { return statSync(path).isDirectory(); } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw error;
+  }
+}
+
 function checkedPath(root: string, path: string): string {
   if (!isWithin(root, resolve(path))) throw new CliError("FILE_TARGET_OUTSIDE_SCOPE", "Registry file target leaves its destination root.");
   const target = canonicalPath(path);
@@ -37,8 +44,9 @@ export function mapFile(file: RemoteFile, context: ProjectContext): ItemFile {
         let value = target.replace(/^src\//, "");
         if (file.type === "registry:page") {
           if (context.framework !== "next") throw new CliError("FILE_TARGET_UNSUPPORTED", "Page routing is currently resolved only for Next.js projects.");
-          const app = context.sourceRoots.some((root) => ["app", "src"].includes(basename(root))) &&
-            [join(context.projectRoot, "app"), join(context.projectRoot, "src/app")].some((root) => context.sourceRoots.includes(root) || (() => { try { return statSync(root).isDirectory(); } catch { return false; } })());
+          const app = ["app", "src/app"].some((name) => directoryExists(join(context.projectRoot, name)));
+          const pages = ["pages", "src/pages"].some((name) => directoryExists(join(context.projectRoot, name)));
+          if (!app && !pages) throw new CliError("FILE_TARGET_UNSUPPORTED", "Cannot infer the Next.js router for this page target.");
           if (!app) value = value.replace(/^app\//, "pages/").replace(/\/page(\.[jt]sx?)$/, "$1");
         }
         const base = context.sourceRoots.includes(join(context.projectRoot, "src")) ? join(context.projectRoot, "src") : context.projectRoot;
@@ -99,7 +107,12 @@ export function localNames(files: LocalFile[], roots: string[]): Set<string> {
   for (const file of files) {
     names.add(basename(file.path).replace(/\.[^.]+$/, ""));
     for (const root of roots) if (isWithin(root, file.path)) {
-      for (const part of relative(root, file.path).split(/[\\/]/).slice(0, -1)) names.add(part);
+      const parts = relative(root, file.path).split(/[\\/]/);
+      names.add(parts.join("/").replace(/\.[^.]+$/, ""));
+      for (let index = 0; index < parts.length - 1; index++) {
+        names.add(parts[index]!);
+        names.add(parts.slice(0, index + 1).join("/"));
+      }
     }
   }
   return names;

@@ -43,6 +43,7 @@ export async function mapLimit<T, U>(values: T[], limit: number, operation: (val
 
 export class RegistryClient {
   #inflight = new Map<string, Promise<FetchResult>>();
+  #settled = new Map<string, FetchResult>();
   #cacheDir: string | false;
   #ttl: number;
   #timeout: number;
@@ -60,26 +61,34 @@ export class RegistryClient {
   }
 
   fetch(source: RegistrySource, name: string, kind: "catalog" | "item", page?: { offset: number; limit: number }): Promise<FetchResult> {
+    if (this.options.signal?.aborted) return Promise.reject(new CliError("REGISTRY_CANCELLED", "Registry request was cancelled."));
     const request = source.request(name, page);
     const key = `${kind}-${request.key}`;
+    const settled = this.#settled.get(key);
+    if (settled) return Promise.resolve(settled);
     const pending = this.#inflight.get(key);
     if (pending) return pending;
-    const operation = this.#load(source, request, key, kind).finally(() => { this.#inflight.delete(key); });
+    const operation = this.#load(source, request, key, kind, name).then((result) => {
+      this.#settled.set(key, result);
+      return result;
+    }).finally(() => { this.#inflight.delete(key); });
     this.#inflight.set(key, operation);
     return operation;
   }
 
-  async #read(key: string, source: RegistrySource, kind: "catalog" | "item"): Promise<CacheEntry | null> {
+  async #read(key: string, source: RegistrySource, kind: "catalog" | "item", name: string): Promise<CacheEntry | null> {
     if (!this.#cacheDir) return null;
     try {
       const input: unknown = JSON.parse(await readFile(join(this.#cacheDir, `${key}.json`), "utf8"));
       if (!isObject(input) || input.version !== 2 || typeof input.fetchedAt !== "string" || typeof input.checkedAt !== "string" ||
         !Number.isFinite(Date.parse(input.fetchedAt)) || !Number.isFinite(Date.parse(input.checkedAt)) ||
         (input.etag !== undefined && typeof input.etag !== "string") || (input.lastModified !== undefined && typeof input.lastModified !== "string")) return null;
+      const document = parseDocument(input.document, source, kind, true);
+      if (kind === "item" && document.items[0]?.name !== name) return null;
       return { version: 2, fetchedAt: input.fetchedAt, checkedAt: input.checkedAt,
         ...(typeof input.etag === "string" ? { etag: input.etag } : {}),
         ...(typeof input.lastModified === "string" ? { lastModified: input.lastModified } : {}),
-        document: parseDocument(input.document, source, kind, true) };
+        document };
     } catch { return null; }
   }
 
@@ -94,9 +103,9 @@ export class RegistryClient {
     } finally { await rm(temporary, { force: true }); }
   }
 
-  async #load(source: RegistrySource, request: ReturnType<RegistrySource["request"]>, key: string, kind: "catalog" | "item"): Promise<FetchResult> {
+  async #load(source: RegistrySource, request: ReturnType<RegistrySource["request"]>, key: string, kind: "catalog" | "item", name: string): Promise<FetchResult> {
     if (this.options.signal?.aborted) throw new CliError("REGISTRY_CANCELLED", "Registry request was cancelled.");
-    const cached = await this.#read(key, source, kind);
+    const cached = await this.#read(key, source, kind, name);
     if (cached && (this.options.offline || (!this.options.refresh && Date.now() - Date.parse(cached.checkedAt) < this.#ttl))) {
       const stale = Date.now() - Date.parse(cached.checkedAt) >= this.#ttl;
       return { document: cached.document, fetchedAt: cached.fetchedAt, cache: stale ? "stale-cache" : "fresh-cache",
@@ -123,6 +132,7 @@ export class RegistryClient {
       }
       const input = await this.#json(response);
       const document = parseDocument(input, source, kind);
+      if (kind === "item" && document.items[0]?.name !== name) throw new CliError("REGISTRY_ITEM_MISMATCH", "Requested manifest returned a different item name.");
       const now = new Date().toISOString();
       const etag = response.headers.get("etag");
       const lastModified = response.headers.get("last-modified");
@@ -219,8 +229,12 @@ export class RegistryClient {
           names.add(item.name); result.items.push(item);
         }
         const pagination = fetched.document.pagination;
+        if (pagination && (!Number.isInteger(pagination.total) || !Number.isInteger(pagination.offset) || !Number.isInteger(pagination.limit) ||
+          pagination.total < 0 || pagination.offset !== offset || pagination.limit < 0 || (!pagination.hasMore && pagination.total !== result.items.length))) {
+          throw new CliError("REGISTRY_PAGINATION_INVALID", "Registry pagination totals or offsets are inconsistent.");
+        }
         if (!pagination?.hasMore) return result;
-        if (pagination.offset !== offset || pagination.limit <= 0 || !fetched.document.items.length) {
+        if (pagination.limit <= 0 || !fetched.document.items.length) {
           throw new CliError("REGISTRY_PAGINATION_INVALID", "Registry pagination does not advance consistently.");
         }
         offset += pagination.limit;

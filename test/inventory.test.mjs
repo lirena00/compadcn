@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync, writeFileSync, symlinkSync } from "node:fs";
+import { readFileSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
 import { buildInventory } from "../dist/inventory/build.js";
@@ -106,6 +106,24 @@ test("partial multi-file items preserve missing-file evidence", async (t) => {
   assert.equal(item.presence, "partial");
   assert.equal(report.counts.partialItemCandidates, 1);
   assert.equal(item.mappedFiles.filter(({ present }) => !present).length, 1);
+});
+
+test("colliding targets inside one manifest remain an explicit incomplete mapping", async (t) => {
+  const collision = { ...button, files: [...button.files, { path: "other/button.tsx", type: "registry:ui", target: "@ui/button.tsx" }] };
+  const server = await serverWithItems(t, [collision], []);
+  const root = project(t, server.url, { "src/components/ui/button.tsx": "custom" });
+  const report = await buildInventory({ cwd: root, cacheDir: false });
+  assert.equal(report.complete, false);
+  assert.ok(report.items[0].diagnostics.some(({ code }) => code === "FILE_TARGET_COLLISION"));
+});
+
+test("Next.js page targets distinguish existing app and pages routers", (t) => {
+  for (const [directory, expected] of [["src/app/demo", "src/app/example/page.tsx"], ["pages/demo", "pages/example.tsx"]]) {
+    const root = project(t, "https://fixture.example", { "package.json": '{"dependencies":{"next":"16"}}', [`${directory}/index.tsx`]: "" });
+    const result = mapFile({ path: "page.tsx", type: "registry:page", target: "app/example/page.tsx" }, discoverProject({ cwd: root }));
+    assert.equal(result.path, join(root, expected));
+    assert.equal(result.diagnostic, undefined);
+  }
 });
 
 test("a failed registry does not prevent healthy inventory", async (t) => {

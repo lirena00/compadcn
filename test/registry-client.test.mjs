@@ -67,6 +67,17 @@ test("catalog endpoint convention agrees with the public upstream API", async (t
   assert.equal(server.requests[0].path, "/registry.json");
 });
 
+test("Tailwind v4 new-york style normalization agrees with the public upstream API", async (t) => {
+  const server = await registryServer(t, (_req, res) => json(res, catalog([])));
+  const root = createProject(t, {
+    "package.json": "{}", "components.json": JSON.stringify({ style: "new-york", tailwind: { config: "" }, registries: { "@shadcn": `${server.url}/{style}/{name}.json` } }),
+  });
+  await getRegistry("@shadcn", { config: { style: "new-york", tailwind: { config: "" }, registries: { "@shadcn": `${server.url}/{style}/{name}.json` } }, useCache: false });
+  const own = loadRegistrySources(root, {}).sources[0].request("registry");
+  assert.equal(own.url.pathname, server.requests[0].path);
+  assert.equal(own.url.pathname, "/new-york-v4/registry.json");
+});
+
 test("catalog pagination fetches every page and rejects non-advancing responses", async (t) => {
   const root = createProject(t);
   const server = await registryServer(t, (req, res) => {
@@ -126,6 +137,19 @@ test("failed refresh preserves cached metadata as stale and marks the source inc
   assert.equal(result.diagnostics[0].code, "REGISTRY_UNAUTHORIZED");
 });
 
+test("expired offline metadata remains available with explicit stale coverage", async (t) => {
+  const root = createProject(t);
+  const server = await registryServer(t, (_req, res) => json(res, catalog([button])));
+  const cacheDir = join(root, "cache");
+  const entry = source(root, server.url);
+  await new RegistryClient({ cacheDir }).catalog(entry);
+  const result = await new RegistryClient({ cacheDir, offline: true, ttlMs: 0 }).catalog(entry);
+  assert.equal(result.status, "stale");
+  assert.equal(result.items.length, 1);
+  assert.equal(result.diagnostics[0].code, "REGISTRY_CACHE_STALE");
+  assert.equal(server.requests.length, 1);
+});
+
 test("damaged caches are misses and never produce invented catalog data", async (t) => {
   const root = createProject(t);
   const server = await registryServer(t, (_req, res) => json(res, catalog([button])));
@@ -142,6 +166,7 @@ test("in-flight requests are deduplicated and concurrency is bounded", async (t)
   const entry = source(root, server.url);
   const client = new RegistryClient({ cacheDir: false });
   await Promise.all([client.fetch(entry, "registry", "catalog"), client.fetch(entry, "registry", "catalog")]);
+  await client.fetch(entry, "registry", "catalog");
   assert.equal(server.requests.length, 1);
   let running = 0; let maximum = 0;
   const values = await mapLimit([1, 2, 3, 4, 5], 2, async (value) => {
@@ -150,6 +175,31 @@ test("in-flight requests are deduplicated and concurrency is bounded", async (t)
   });
   assert.equal(maximum, 2);
   assert.deepEqual(values, [2, 4, 6, 8, 10]);
+});
+
+test("normalized font catalogs and detailed content hashes survive offline cache reads", async (t) => {
+  const root = createProject(t);
+  const font = { name: "font-inter", type: "registry:font", font: { family: "Inter", provider: "google", import: "Inter", variable: "--font-inter" } };
+  const server = await registryServer(t, (req, res) => json(res, req.url.includes("registry.json") ? catalog([font]) : button));
+  const cacheDir = join(root, "cache");
+  const entry = source(root, server.url);
+  const online = new RegistryClient({ cacheDir });
+  await online.fetch(entry, "registry", "catalog");
+  const detail = await online.fetch(entry, "button", "item");
+  assert.match(detail.document.items[0].files[0].contentHash, /^[a-f0-9]{64}$/);
+  const offline = new RegistryClient({ cacheDir, offline: true });
+  assert.equal((await offline.fetch(entry, "registry", "catalog")).document.items[0].type, "registry:font");
+  assert.equal((await offline.fetch(entry, "button", "item")).document.items[0].files[0].contentHash, detail.document.items[0].files[0].contentHash);
+  assert.equal(server.requests.length, 2);
+});
+
+test("pagination cannot claim complete coverage while omitting catalog records", async (t) => {
+  const root = createProject(t);
+  const server = await registryServer(t, (_req, res) => json(res, catalog([button], { total: 4, offset: 0, limit: 100, hasMore: false })));
+  const result = await new RegistryClient({ cacheDir: false }).catalog(source(root, server.url));
+  assert.equal(result.status, "error");
+  assert.equal(result.items.length, 1);
+  assert.equal(result.diagnostics[0].code, "REGISTRY_PAGINATION_INVALID");
 });
 
 test("cross-origin redirects never forward configured authorization", async (t) => {

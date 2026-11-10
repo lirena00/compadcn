@@ -39,6 +39,8 @@ function scopes(project: ProjectContext, workspace: boolean): string[] {
 function makeItem(item: RemoteItem, source: RegistrySource, context: ProjectContext, inCatalog: boolean, manifest: InventoryItem["manifest"]): InventoryItem {
   const mappedFiles = item.files.map((file) => mapFile(file, context));
   const diagnostics = mappedFiles.flatMap((file) => file.diagnostic ? [file.diagnostic] : []);
+  const resolved = mappedFiles.flatMap(({ path }) => path ? [path] : []);
+  if (new Set(resolved).size < resolved.length) diagnostics.push({ code: "FILE_TARGET_COLLISION", severity: "error", message: "Multiple files in this manifest resolve to the same local destination." });
   const present = mappedFiles.filter((file) => file.present).length;
   const originItemId = digest(`${source.descriptor.originId}/${item.name}`);
   const destinations = [...new Set(mappedFiles.flatMap(({ path }) => path ? [path] : []))].sort();

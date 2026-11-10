@@ -30,10 +30,10 @@ export function formatInventory(report: InventoryReport): string {
     for (const diagnostic of source.diagnostics) lines.push(`  ${diagnostic.severity.toUpperCase()} ${diagnostic.code}: ${diagnostic.message}`);
   }
   for (const item of report.items) {
-    if (["present", "partial"].includes(item.presence) || item.manifest === "error") {
+    if (["present", "partial"].includes(item.presence) || item.manifest === "error" || item.diagnostics.length) {
       lines.push(`${item.qualifiedName} [${item.scope}]: ${item.presence}, ${item.originConfidence} origin (${item.mappedFiles.filter(({ present }) => present).length}/${item.mappedFiles.length} files)`);
     }
-    for (const diagnostic of item.diagnostics) lines.push(`  ${diagnostic.severity.toUpperCase()} ${diagnostic.code}: ${diagnostic.message}`);
+    for (const diagnostic of item.diagnostics) lines.push(`  ${diagnostic.severity.toUpperCase()} ${diagnostic.code}: ${diagnostic.message}${diagnostic.path ? ` [${diagnostic.path}]` : ""}`);
   }
   for (const diagnostic of report.diagnostics) lines.push(`${diagnostic.severity.toUpperCase()} ${diagnostic.code}: ${diagnostic.message}${diagnostic.path ? ` [${diagnostic.path}]` : ""}`);
   lines.push("Ownership candidates require review; inventory does not establish installation history or cleanup eligibility.");

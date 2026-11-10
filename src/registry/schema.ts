@@ -1,4 +1,4 @@
-import { registryItemSchema, registrySchema } from "shadcn/schema";
+import { registryItemFileSchema, registryItemSchema, registryItemTypeSchema, registryPaginationSchema, registrySchema } from "shadcn/schema";
 import { CliError } from "../core/errors.js";
 import { isObject } from "../project/files.js";
 import { digest, type RegistrySource } from "./source.js";
@@ -13,20 +13,17 @@ function safeReference(value: string): string {
   } catch { return value; }
 }
 
-function item(input: unknown, source: RegistrySource, cached: boolean): RemoteItem {
+function item(input: unknown, source: RegistrySource): RemoteItem {
   const parsed = registryItemSchema.safeParse(input);
   if (!parsed.success) throw new CliError("REGISTRY_SCHEMA_INVALID", "Registry item does not match the pinned shadcn schema.");
   const data = parsed.data;
-  const raw = isObject(input) ? input : {};
   if (!data.name || data.name.split("/").some((part) => !part || part === "." || part === "..")) throw new CliError("REGISTRY_SCHEMA_INVALID", "Registry item name is invalid.");
   return {
     name: source.redact(data.name), type: data.type,
     ...(data.title ? { title: source.redact(data.title) } : {}),
     ...(data.description ? { description: source.redact(data.description) } : {}),
-    files: (data.files ?? []).map((file, index) => {
-      const rawFile: unknown = Array.isArray(raw.files) ? raw.files[index] : undefined;
-      const contentHash = typeof file.content === "string" ? digest(file.content) : cached && isObject(rawFile) &&
-        typeof rawFile.contentHash === "string" && /^[a-f0-9]{64}$/.test(rawFile.contentHash) ? rawFile.contentHash : undefined;
+    files: (data.files ?? []).map((file) => {
+      const contentHash = typeof file.content === "string" ? digest(file.content) : undefined;
       return { path: source.redact(file.path), type: file.type,
         ...(file.target ? { target: source.redact(file.target) } : {}), ...(contentHash ? { contentHash } : {}) };
     }),
@@ -36,29 +33,45 @@ function item(input: unknown, source: RegistrySource, cached: boolean): RemoteIt
   };
 }
 
+function cachedItem(input: unknown, source: RegistrySource): RemoteItem {
+  const invalid = (): never => { throw new CliError("REGISTRY_CACHE_INVALID", "Cached registry item projection is invalid."); };
+  if (!isObject(input) || typeof input.name !== "string" || !input.name || input.name.split("/").some((part) => !part || part === "." || part === "..") ||
+    !registryItemTypeSchema.safeParse(input.type).success || !Array.isArray(input.files) || !Array.isArray(input.registryDependencies) ||
+    (input.title !== undefined && typeof input.title !== "string") || (input.description !== undefined && typeof input.description !== "string")) return invalid();
+  const strings = (values: unknown): string[] => {
+    if (!Array.isArray(values) || !values.every((value) => typeof value === "string")) return invalid();
+    return values.map((value: string) => source.redact(safeReference(value)));
+  };
+  return {
+    name: source.redact(input.name), type: input.type as string,
+    ...(typeof input.title === "string" ? { title: source.redact(input.title) } : {}),
+    ...(typeof input.description === "string" ? { description: source.redact(input.description) } : {}),
+    files: input.files.map((file: unknown) => {
+      const parsed = registryItemFileSchema.safeParse(file);
+      if (!parsed.success || !isObject(file) || (file.contentHash !== undefined && (typeof file.contentHash !== "string" || !/^[a-f0-9]{64}$/.test(file.contentHash)))) return invalid();
+      return { path: source.redact(parsed.data.path), type: parsed.data.type,
+        ...(parsed.data.target ? { target: source.redact(parsed.data.target) } : {}),
+        ...(typeof file.contentHash === "string" ? { contentHash: file.contentHash } : {}) };
+    }),
+    dependencies: strings(input.dependencies), devDependencies: strings(input.devDependencies),
+    registryDependencies: input.registryDependencies.map((reference: unknown) => {
+      if (!isObject(reference) || typeof reference.id !== "string" || !/^[a-f0-9]{64}$/.test(reference.id) || typeof reference.reference !== "string") return invalid();
+      return { id: reference.id, reference: source.redact(safeReference(reference.reference)) };
+    }),
+  };
+}
+
 export function parseDocument(input: unknown, source: RegistrySource, kind: "catalog" | "item", cached = false): RegistryDocument {
   if (cached) {
     if (!isObject(input) || !Array.isArray(input.items)) throw new CliError("REGISTRY_CACHE_INVALID", "Cached registry document is invalid.");
-    // The normalized dependency records are converted back for upstream validation.
-    const items = input.items.map((value: unknown) => item(isObject(value) ? { ...value, registryDependencies: [] } : value, source, true));
-    for (let index = 0; index < items.length; index++) {
-      const value: unknown = input.items[index];
-      if (isObject(value) && Array.isArray(value.registryDependencies)) {
-        items[index]!.registryDependencies = value.registryDependencies.map((reference: unknown) => {
-          if (!isObject(reference) || typeof reference.id !== "string" || !/^[a-f0-9]{64}$/.test(reference.id) || typeof reference.reference !== "string") {
-            throw new CliError("REGISTRY_CACHE_INVALID", "Cached registry dependency is invalid.");
-          }
-          return { id: reference.id, reference: source.redact(safeReference(reference.reference)) };
-        });
-      }
-    }
+    const items = input.items.map((value: unknown) => cachedItem(value, source));
+    if (kind === "item" && items.length !== 1) throw new CliError("REGISTRY_CACHE_INVALID", "Cached item response must contain one manifest.");
     const pagination = input.pagination;
-    if (pagination !== undefined && (!isObject(pagination) || !Number.isInteger(pagination.total) || !Number.isInteger(pagination.offset) ||
-      !Number.isInteger(pagination.limit) || typeof pagination.hasMore !== "boolean")) throw new CliError("REGISTRY_CACHE_INVALID", "Cached pagination is invalid.");
+    if (pagination !== undefined && !registryPaginationSchema.safeParse(pagination).success) throw new CliError("REGISTRY_CACHE_INVALID", "Cached pagination is invalid.");
     return { items, ...(pagination ? { pagination: pagination as RegistryDocument["pagination"] } : {}) };
   }
-  if (kind === "item") return { items: [item(input, source, false)] };
+  if (kind === "item") return { items: [item(input, source)] };
   const parsed = registrySchema.safeParse(input);
   if (!parsed.success || parsed.data.include?.length) throw new CliError("REGISTRY_SCHEMA_INVALID", "Registry endpoint must serve a valid flattened catalog.");
-  return { items: parsed.data.items.map((value) => item(value, source, false)), ...(parsed.data.pagination ? { pagination: parsed.data.pagination } : {}) };
+  return { items: parsed.data.items.map((value) => item(value, source)), ...(parsed.data.pagination ? { pagination: parsed.data.pagination } : {}) };
 }
