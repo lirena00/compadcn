@@ -59,7 +59,7 @@ export class RegistrySource {
     const value = this.#definition.url.replaceAll("{name}", name.split("/").map(encodeURIComponent).join("/"))
       .replaceAll("{style}", encodeURIComponent(this.descriptor.style));
     const url = new URL(value);
-    for (const [key, value] of Object.entries(this.#definition.params ?? {})) url.searchParams.set(key, value);
+    for (const [key, value] of Object.entries(this.#definition.params ?? {})) url.searchParams.append(key, value);
     if (page) { url.searchParams.set("offset", String(page.offset)); url.searchParams.set("limit", String(page.limit)); }
     const headers = new Headers(this.#definition.headers);
     if (!headers.has("accept")) headers.set("accept", "application/json");
@@ -95,7 +95,8 @@ export function loadRegistrySources(root: string, env: NodeJS.ProcessEnv = proce
       }
       for (const [namespace, value] of Object.entries(object.registries)) definitions.set(namespace, { value, path });
     }
-    const style = typeof components.style === "string" && components.style ? components.style : "new-york-v4";
+    const style = typeof components.style === "string" && components.style &&
+      !(components.style === "new-york" && isObject(components.tailwind) && components.tailwind.config === "") ? components.style : "new-york-v4";
     for (const [namespace, { value, path }] of definitions) {
       try {
         if (!/^@[\w-]+$/.test(namespace)) throw new CliError("REGISTRY_NAMESPACE_INVALID", "Registry namespace must start with @ and contain only letters, digits, underscores or hyphens.");

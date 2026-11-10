@@ -38,7 +38,7 @@ immediately. JSON responses contain `schemaVersion`, `toolVersion`, `status`, an
 either `data` or `error`. Plain CLI errors go to stderr; JSON errors are returned
 as one structured response on stdout. Parser/runner errors return exit code `2`.
 
-Doctor, help, version, and CLI errors support these output modes. Existing component and
+Doctor, inventory, help, version, and CLI errors support these output modes. Existing component and
 preset workflows do not yet support `--json` or `--plain`; they return
 `OUTPUT_MODE_UNSUPPORTED` instead of mixing terminal text with machine output.
 Workflows requiring prompts fail with `INTERACTIVE_REQUIRED` when no interactive
@@ -75,7 +75,7 @@ shadcn-plus --plain doctor --cwd ./src/features
 Doctor selects the nearest `package.json` from the chosen directory, stopping at
 the Git/worktree boundary. At a workspace root, select the intended app/package
 with `doctor --cwd`; it does not choose an app automatically. `--cwd` currently
-belongs to `doctor` only.
+is available on `doctor` and `inventory`.
 
 It reports the framework inferred from dependencies, conventional source folders,
 package manager and its metadata location, workspace members, compiler configs,
@@ -106,6 +106,73 @@ The API exposes `await discoverProject({ cwd })` with the same context and
 diagnostics, without changing `process.cwd()`. This service is the foundation for
 the upcoming inventory/graph commands. Existing component workflows still use
 their legacy discovery and cleanup behavior until those units are implemented.
+
+### `shadcn-plus inventory`
+
+Fetch every configured compatible registry catalog and inspect local files using
+the same pipeline for official, custom, and private registries.
+
+```bash
+shadcn-plus inventory --cwd ./apps/web
+shadcn-plus inventory --workspace --json
+shadcn-plus inventory --cwd ./apps/web --item @company/dashboard --json
+shadcn-plus inventory --refresh --plain
+shadcn-plus inventory --offline --json
+```
+
+The pinned `shadcn@4.23.0` configuration behavior is covered by compatibility tests:
+package.json registry entries augment the built-in `@shadcn` source, and entries in
+the same package's `components.json` override them. Parent configs are not merged.
+Each workspace namespace retains its own binding. By default the selected package
+and configured shared alias owners are included; `--workspace` includes every
+configured workspace package. Repeated `--item @namespace/name` addresses resolve
+in the `--cwd` package, including for sources without an enumerable catalog.
+
+String/object URL templates support `{name}`, `{style}`, `${ENV_VAR}` references,
+headers, and query params. Missing environment variables produce diagnostics. Supply
+credentials through the process environment; inventory does not load `.env` files.
+Catalog pagination is followed up to 100 pages with four concurrent operations by
+default. Use `--concurrency 1-16` and `--timeout <milliseconds>` when needed.
+
+Registry metadata is cached for five minutes under
+`~/.cache/shadcn-plus/registry-v2`. `--cache-dir <path>` selects another location;
+`--no-cache` disables persistence. Conditional requests use ETag/Last-Modified when
+available. Authenticated cache entries are isolated by request credentials and
+package scope; credential changes cannot reuse an earlier context. Cache files
+store normalized metadata and content hashes, excluding request URLs, header
+values, raw source contents, environment configuration, and registry auth objects.
+Cross-origin redirects are rejected. Short rate-limit backoffs are retried; long
+server-requested waits return a diagnostic without retrying early.
+
+Catalog records remain distinct from observed local files. Detailed manifests are
+fetched for known requested items and catalog items that have local filename,
+directory, or declared-target evidence. Inventory supports nested/multi-file items,
+shared files, explicit `~/` and alias targets, conventional file-type destinations,
+and JS extension conversion. Local scans cover configured alias directories, up to
+20,000 relevant files per scope, excluding generated/dependency directories. Files
+outside those directories are included when a fetched manifest targets them.
+
+`presence: present` means every declared file was found at a resolved destination;
+it does not prove an upstream origin. Origins stay `candidate`, `ambiguous`, or
+`unknown`. Content comparisons distinguish exact raw content from differences that
+may include customization or shadcn transformations. No transformed baseline or
+installation history is inferred. Competing origins, missing files, failed
+manifests, and unsupported destinations remain visible; no files are changed or
+deleted. Counts distinguish catalog addresses, unique registry items, local files,
+and item candidates, and deduplicate aliases/shared destinations.
+
+A failing source leaves healthy results available. Catalog-less sources report
+`catalog-unavailable`; cached metadata retained after a failed refresh reports
+`stale`. Incomplete coverage returns exit code `2`, with the partial JSON report
+under `error.details.report` and code `INVENTORY_INCOMPLETE`. Complete results use
+`data`. Plain output summarizes the same snapshot. Cancellation and request/body
+limits preserve incomplete coverage rather than reporting an empty clean inventory.
+
+The API exposes `await buildInventory({ cwd, offline, cacheDir, items })`. Inventory
+is read-only with respect to project files; its metadata cache is the only write.
+Legacy add/preset/lint/remove commands keep their existing behavior. Dependency
+graph construction, usage analysis, ownership adoption, and cleanup plans follow
+in separate implementation units.
 
 ### `shadcn-plus add [components...]`
 
