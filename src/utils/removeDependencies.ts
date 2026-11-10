@@ -1,7 +1,7 @@
 import { execa } from "execa";
-import { spinner } from "@clack/prompts";
-import chalk from "chalk";
+import { log } from "@clack/prompts";
 import { getUserPkgManager } from "./getUserPkgManager.js";
+import { toCliError } from "../core/errors.js";
 
 export async function removeDependencies(
   dependencies: string[]
@@ -9,25 +9,19 @@ export async function removeDependencies(
   if (dependencies.length === 0) return;
 
   const packageManager = getUserPkgManager();
-  const s = spinner();
-  s.start(`Removing dependencies using ${packageManager}...`);
+  log.step(`Removing dependencies using ${packageManager}...`);
 
   try {
     const { command, args } = buildRemoveCommand(packageManager, dependencies);
 
     await execa(command, args, {
       cwd: process.cwd(),
+      stdio: "inherit",
     });
 
-    s.stop(chalk.green("Dependencies removed successfully"));
+    log.success("Dependencies removed successfully");
   } catch (error) {
-    s.stop(chalk.red("Failed to remove dependencies"));
-
-    if (error instanceof Error) {
-      console.error(chalk.red(error.message));
-    }
-
-    throw error;
+    throw toCliError(error, "DEPENDENCY_REMOVAL_FAILED", "Dependency removal failed.");
   }
 }
 

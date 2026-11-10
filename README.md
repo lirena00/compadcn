@@ -153,6 +153,10 @@ Package-manager detection uses the nearest project's `packageManager` field or
 lockfile before the launcher environment. It supports `bun.lock` and `bun.lockb`,
 and reports conflicting declarations/lockfiles instead of choosing silently.
 The installer runners use npm/npx, pnpm dlx, modern Yarn dlx, or Bun bunx.
+External installers/removers inherit terminal input and output so their prompts
+and diagnostics remain visible. Configure `tailwind.cssVariables` in
+`components.json`; the old add-time CSS-variable flags are not accepted by
+upstream `shadcn add` and are no longer exposed.
 
 ## How It Works
 

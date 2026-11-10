@@ -16,7 +16,7 @@ import { getInstalledComponents } from "../utils/getInstalledComponents.js";
 
 export async function runAddUI(
   componentsToAdd?: string[],
-  options?: { overwrite?: boolean; cssVariables?: boolean }
+  options?: { overwrite?: boolean }
 ) {
   intro(chalk.bgCyan("Add Components"));
 
@@ -28,12 +28,6 @@ export async function runAddUI(
     } else {
       log.step("Checking installed components...");
       installedComponents = await getInstalledComponents();
-    }
-
-    if (options?.cssVariables === false) {
-      log.step(
-        "Using CSS variables for theming is disabled. Components will not use CSS variables."
-      );
     }
 
     let finalComponentsToAdd: string[] = [];

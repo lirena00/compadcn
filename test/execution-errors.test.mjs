@@ -124,6 +124,30 @@ test("cancelling installation is a normal outcome and never launches the install
   assert.doesNotMatch(result.stdout, /installed successfully/);
 });
 
+test("dependency-removal failure cannot produce a successful cleanup message", (t) => {
+  const cwd = project(t, { "src/components/ui/command.tsx": "export const Command=()=>null;" });
+  const result = run(cwd, ["remove", "command"], {
+    SHADCN_PLUS_SELECT_DEPS: "1", SHADCN_PLUS_PM_EXIT: "7",
+  });
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /ERROR DEPENDENCY_REMOVAL_FAILED:/);
+  assert.match(result.stderr, /Simulated package-manager failure/);
+  assert.doesNotMatch(result.stdout, /Successfully removed/);
+  const invocation = JSON.parse(readFileSync(result.argsFile, "utf8"));
+  assert.equal(invocation.command, "npm");
+  assert.deepEqual(invocation.args, ["uninstall", "cmdk"]);
+});
+
+for (const flag of ["--css-variables", "--no-css-variables"]) {
+  test(`obsolete ${flag} is rejected before an installer starts`, (t) => {
+    const cwd = project(t);
+    const result = run(cwd, ["add", "button", flag]);
+    assert.equal(result.status, 2);
+    assert.match(result.stderr, /ERROR INVALID_ARGUMENT: unknown option/);
+    assert.equal(existsSync(result.argsFile), false);
+  });
+}
+
 test("deleting a preset by its display label deletes its resolved id", (t) => {
   const cwd = project(t, { [store]: JSON.stringify({ presets: {
     custom: { id: "custom", label: "My Custom Preset", description: "", components: [], createdAt: "2026-11-10" },

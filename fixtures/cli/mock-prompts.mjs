@@ -11,4 +11,5 @@ export const confirm = async () => process.env.SHADCN_PLUS_CANCEL
 export const text = async () => process.env.SHADCN_PLUS_CANCEL_TEXT ? cancelled : "Test preset";
 export const select = async ({ options }) => options[0]?.value;
 export const multiselect = async ({ options, required, initialValues }) => required === false
-  ? [] : initialValues?.length ? initialValues : options.slice(0, 1).map((option) => option.value);
+  ? process.env.SHADCN_PLUS_SELECT_DEPS ? options.map((option) => option.value) : []
+  : initialValues?.length ? initialValues : options.slice(0, 1).map((option) => option.value);
