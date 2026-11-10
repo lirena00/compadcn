@@ -6,6 +6,7 @@ import { runPresetUI } from "./commands/preset.js";
 import { runAddUI } from "./commands/add.js";
 import { runLintUI } from "./commands/lint.js";
 import { runRemoveUI } from "./commands/remove.js";
+import { packageInfo } from "./lib/packageInfo.js";
 import {
   listPresets,
   showPreset,
@@ -17,9 +18,9 @@ import {
 const program = new Command();
 
 program
-  .name("compadcn")
-  .description("CLI for installing and managing ShadCN UI components")
-  .version("0.0.1");
+  .name(packageInfo.name)
+  .description(packageInfo.description)
+  .version(packageInfo.version);
 
 program.hook("preAction", () => {
   renderTitle();
