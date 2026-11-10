@@ -15,8 +15,9 @@ export class RegistrySource {
   readonly descriptor: SourceDescriptor;
   #definition: Definition;
   #secrets: string[] = [];
+  #references = new Map<string, string>();
 
-  constructor(namespace: string, definition: Definition, scope: string, configPath: string, style: string, env: NodeJS.ProcessEnv) {
+  constructor(namespace: string, definition: Definition, scope: string, configPath: string, style: string, env: NodeJS.ProcessEnv, readonly direct = false) {
     const secrets = new Set<string>();
     const expand = (value: string): string => value.replace(/\$\{(\w+)\}/g, (_match, name: string) => {
       const result = env[name];
@@ -33,7 +34,7 @@ export class RegistrySource {
       const token = value.replace(/^Bearer\s+/i, "");
       if (token.length >= 4) secrets.add(token);
     }
-    if (!this.#definition.url.includes("{name}") || /\{(?!name\}|style\})/.test(this.#definition.url)) {
+    if (!direct && (!this.#definition.url.includes("{name}") || /\{(?!name\}|style\})/.test(this.#definition.url))) {
       throw new CliError("REGISTRY_URL_INVALID", "Registry URL must contain {name} and only supported placeholders.");
     }
     const url = new URL(this.#definition.url.replaceAll("{name}", "registry").replaceAll("{style}", encodeURIComponent(style)));
@@ -56,7 +57,7 @@ export class RegistrySource {
     if (!name || name.split("/").some((part) => !part || part === "." || part === "..")) {
       throw new CliError("REGISTRY_ITEM_INVALID", "Registry item name is invalid.");
     }
-    const value = this.#definition.url.replaceAll("{name}", name.split("/").map(encodeURIComponent).join("/"))
+    const value = this.direct ? this.#definition.url : this.#definition.url.replaceAll("{name}", name.split("/").map(encodeURIComponent).join("/"))
       .replaceAll("{style}", encodeURIComponent(this.descriptor.style));
     const url = new URL(value);
     for (const [key, value] of Object.entries(this.#definition.params ?? {})) url.searchParams.append(key, value);
@@ -64,7 +65,7 @@ export class RegistrySource {
     const headers = new Headers(this.#definition.headers);
     if (!headers.has("accept")) headers.set("accept", "application/json");
     const sortedHeaders = [...headers.entries()].sort(([a], [b]) => a.localeCompare(b));
-    const key = digest(JSON.stringify([2, url.href, sortedHeaders, this.descriptor.authenticated ? this.descriptor.scope : null]));
+    const key = digest(JSON.stringify([3, url.href, sortedHeaders, this.descriptor.authenticated ? this.descriptor.scope : null]));
     return { url, headers, key };
   }
 
@@ -72,6 +73,19 @@ export class RegistrySource {
     for (const secret of this.#secrets) value = value.replaceAll(secret, "[redacted]");
     return value;
   }
+
+  rememberReference(value: string): string {
+    const id = digest(value);
+    this.#references.set(id, value);
+    try {
+      const url = new URL(value);
+      for (const secret of [url.password, ...url.searchParams.values()]) if (secret.length >= 4 && !this.#secrets.includes(secret)) this.#secrets.push(secret);
+      this.#secrets.sort((a, b) => b.length - a.length);
+    } catch { /* Qualified references contain no URL credentials. */ }
+    return id;
+  }
+
+  originalReference(id: string): string | undefined { return this.#references.get(id); }
 
   toJSON(): SourceDescriptor { return this.descriptor; }
 }

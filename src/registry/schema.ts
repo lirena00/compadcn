@@ -17,6 +17,13 @@ function item(input: unknown, source: RegistrySource): RemoteItem {
   const parsed = registryItemSchema.safeParse(input);
   if (!parsed.success) throw new CliError("REGISTRY_SCHEMA_INVALID", "Registry item does not match the pinned shadcn schema.");
   const data = parsed.data;
+  // Remember opaque addresses only in memory. Public/cache projections omit URL
+  // credentials; graph traversal can recover them from a fresh parent manifest.
+  const references = (data.registryDependencies ?? []).map((value) => {
+    const id = source.rememberReference(value);
+    const reference = source.redact(safeReference(value));
+    return { id, reference, ...(reference !== value ? { requiresOriginal: true } : {}) };
+  });
   if (!data.name || data.name.split("/").some((part) => !part || part === "." || part === "..")) throw new CliError("REGISTRY_SCHEMA_INVALID", "Registry item name is invalid.");
   return {
     name: source.redact(data.name), type: data.type,
@@ -29,7 +36,9 @@ function item(input: unknown, source: RegistrySource): RemoteItem {
     }),
     dependencies: (data.dependencies ?? []).map((value) => source.redact(safeReference(value))),
     devDependencies: (data.devDependencies ?? []).map((value) => source.redact(safeReference(value))),
-    registryDependencies: (data.registryDependencies ?? []).map((value) => ({ id: digest(value), reference: source.redact(safeReference(value)) })),
+    registryDependencies: references,
+    resources: (["css", "cssVars", "tailwind", "envVars", "config", "font"] as const).flatMap((kind) =>
+      kind in data && data[kind as keyof typeof data] !== undefined ? [{ kind, fingerprint: digest(JSON.stringify(data[kind as keyof typeof data])) }] : []),
   };
 }
 
@@ -56,8 +65,14 @@ function cachedItem(input: unknown, source: RegistrySource): RemoteItem {
     dependencies: strings(input.dependencies), devDependencies: strings(input.devDependencies),
     registryDependencies: input.registryDependencies.map((reference: unknown) => {
       if (!isObject(reference) || typeof reference.id !== "string" || !/^[a-f0-9]{64}$/.test(reference.id) || typeof reference.reference !== "string") return invalid();
-      return { id: reference.id, reference: source.redact(safeReference(reference.reference)) };
+      if (reference.requiresOriginal !== undefined && typeof reference.requiresOriginal !== "boolean") return invalid();
+      return { id: reference.id, reference: source.redact(safeReference(reference.reference)), ...(reference.requiresOriginal ? { requiresOriginal: true } : {}) };
     }),
+    resources: Array.isArray(input.resources) ? input.resources.map((value: unknown) => {
+      if (!isObject(value) || !["css", "cssVars", "tailwind", "envVars", "config", "font"].includes(String(value.kind)) ||
+        typeof value.fingerprint !== "string" || !/^[a-f0-9]{64}$/.test(value.fingerprint)) return invalid();
+      return { kind: value.kind as NonNullable<RemoteItem["resources"]>[number]["kind"], fingerprint: value.fingerprint };
+    }) : invalid(),
   };
 }
 

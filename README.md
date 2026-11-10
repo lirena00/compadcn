@@ -135,7 +135,7 @@ Catalog pagination is followed up to 100 pages with four concurrent operations b
 default. Use `--concurrency 1-16` and `--timeout <milliseconds>` when needed.
 
 Registry metadata is cached for five minutes under
-`~/.cache/shadcn-plus/registry-v2`. `--cache-dir <path>` selects another location;
+`~/.cache/shadcn-plus/registry-v3`. `--cache-dir <path>` selects another location;
 `--no-cache` disables persistence. Conditional requests use ETag/Last-Modified when
 available. Authenticated cache entries are isolated by request credentials and
 package scope; credential changes cannot reuse an earlier context. Cache files
