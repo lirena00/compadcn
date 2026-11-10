@@ -7,6 +7,13 @@ export type PackageManager = "npm" | "pnpm" | "yarn" | "bun";
 interface DetectionOptions {
   cwd?: string;
   env?: NodeJS.ProcessEnv;
+  boundary?: string;
+}
+
+export interface PackageManagerInfo {
+  name: PackageManager;
+  source: "packageManager" | "lockfile" | "environment" | "default";
+  directory: string;
 }
 
 const lockfiles: Record<string, PackageManager> = {
@@ -18,9 +25,13 @@ const lockfiles: Record<string, PackageManager> = {
   "bun.lockb": "bun",
 };
 
-export function getUserPkgManager({
-  cwd = process.cwd(), env = process.env,
-}: DetectionOptions = {}): PackageManager {
+export function getUserPkgManager(options: DetectionOptions = {}): PackageManager {
+  return getPackageManagerInfo(options).name;
+}
+
+export function getPackageManagerInfo({
+  cwd = process.cwd(), env = process.env, boundary,
+}: DetectionOptions = {}): PackageManagerInfo {
   let directory = resolve(cwd);
 
   while (true) {
@@ -58,17 +69,17 @@ export function getUserPkgManager({
         `Conflicting package-manager metadata in ${directory}. Resolve packageManager and lockfiles before continuing.`
       );
     }
-    if (declared) return declared;
-    if (managers.size === 1) return [...managers][0]!;
+    if (declared) return { name: declared, source: "packageManager", directory };
+    if (managers.size === 1) return { name: [...managers][0]!, source: "lockfile", directory };
 
     const parent = dirname(directory);
-    if (parent === directory || existsSync(join(directory, ".git"))) break;
+    if (parent === directory || existsSync(join(directory, ".git")) || (boundary && directory === resolve(boundary))) break;
     directory = parent;
   }
 
   // The launcher is only a fallback when the project supplies no metadata.
   const launcher = env.npm_config_user_agent?.split("/")[0];
   return ["npm", "pnpm", "yarn", "bun"].includes(launcher ?? "")
-    ? launcher as PackageManager
-    : "npm";
+    ? { name: launcher as PackageManager, source: "environment", directory: resolve(cwd) }
+    : { name: "npm", source: "default", directory: resolve(cwd) };
 }
