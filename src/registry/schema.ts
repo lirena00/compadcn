@@ -2,6 +2,7 @@ import { registryItemFileSchema, registryItemSchema, registryItemTypeSchema, reg
 import { CliError } from "../core/errors.js";
 import { isObject } from "../project/files.js";
 import { digest, type RegistrySource } from "./source.js";
+import { canonicalJSON } from "../core/hash.js";
 import type { RegistryDocument, RemoteItem } from "./types.js";
 
 function safeReference(value: string): string {
@@ -38,7 +39,7 @@ function item(input: unknown, source: RegistrySource): RemoteItem {
     devDependencies: (data.devDependencies ?? []).map((value) => source.redact(safeReference(value))),
     registryDependencies: references,
     resources: (["css", "cssVars", "tailwind", "envVars", "config", "font"] as const).flatMap((kind) =>
-      kind in data && data[kind as keyof typeof data] !== undefined ? [{ kind, fingerprint: digest(JSON.stringify(data[kind as keyof typeof data])) }] : []),
+      kind in data && data[kind as keyof typeof data] !== undefined ? [{ kind, fingerprint: digest(canonicalJSON(data[kind as keyof typeof data])) }] : []),
   };
 }
 

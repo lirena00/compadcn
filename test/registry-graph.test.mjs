@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readdirSync, readFileSync } from "node:fs";
+import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
 import { createInventorySession } from "../dist/inventory/build.js";
@@ -96,12 +96,18 @@ test("direct authenticated URLs never receive the parent registry's authorizatio
     json(res, item("remote"));
   });
   const parent = item("parent", [`${remote.url}/remote.json?token=private-token`]);
-  const { root } = await fixture(t, [], [parent]);
+  const { root, server } = await fixture(t, [], [parent]);
+  const configPath = join(root, "components.json");
+  const config = JSON.parse(readFileSync(configPath, "utf8"));
+  config.registries["@custom"] = { url: `${server.url}/custom/{name}.json`, headers: { Authorization: "Bearer parent-token" } };
+  writeFileSync(configPath, JSON.stringify(config));
   const cache = createProject(t);
   const first = await graph(root, { cacheDir: cache });
   assert.equal(first.counts.items, 2);
   assert.equal(first.complete, true);
   assert.equal(JSON.stringify(first).includes("private-token"), false);
+  assert.equal(JSON.stringify(first).includes("parent-token"), false);
+  assert.ok(server.requests.filter(({ path }) => path.startsWith("/custom/")).every(({ headers }) => headers.authorization === "Bearer parent-token"));
   const cachedText = readdirSync(cache).filter((file) => file.endsWith(".json")).map((file) => readFileSync(join(cache, file), "utf8")).join("");
   assert.equal(cachedText.includes("private-token"), false);
   const offline = await graph(root, { cacheDir: cache, offline: true });
@@ -118,6 +124,14 @@ test("closure limits retain a bounded graph and a diagnostic", async (t) => {
   assert.equal(result.complete, false);
   assert.equal(result.counts.items, 1);
   assert.ok(result.diagnostics.some(({ code }) => code === "GRAPH_ITEM_LIMIT"));
+});
+
+test("many over-limit dependencies share a bounded unresolved limit node", async (t) => {
+  const { root } = await fixture(t, [], [item("parent", Array.from({ length: 100 }, (_, index) => `@custom/child-${index}`))]);
+  const result = await graph(root, { maxItems: 1 });
+  assert.equal(result.counts.items, 1);
+  assert.equal(result.counts.unresolved, 1);
+  assert.equal(result.edges.filter(({ kind }) => kind === "registry-dependency").length, 100);
 });
 
 test("cycle detection handles long chains and isolated self-loops iteratively", () => {

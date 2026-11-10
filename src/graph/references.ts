@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 
 export interface SourceReference {
   specifier?: string;
-  syntax: "import" | "export" | "require" | "require-resolve" | "dynamic-import" | "import-type" | "import-equals" | "glob";
+  syntax: "import" | "export" | "require" | "require-resolve" | "dynamic-import" | "import-type" | "import-equals" | "glob" | "shadowed-require";
   phase: "runtime" | "type";
   line: number;
   column: number;
@@ -11,7 +11,7 @@ export interface SourceReference {
 
 export function parseReferences(path: string, text: string): { references: SourceReference[]; errors: { line: number; column: number }[] } {
   const source = ts.createSourceFile(path, text, ts.ScriptTarget.Latest, true);
-  const options: ts.CompilerOptions = { allowJs: true, noResolve: true, noLib: true, jsx: ts.JsxEmit.Preserve, module: ts.ModuleKind.ESNext };
+  const options: ts.CompilerOptions = { allowJs: true, noResolve: true, noLib: true, types: [], jsx: ts.JsxEmit.Preserve, module: ts.ModuleKind.ESNext };
   const host = ts.createCompilerHost(options);
   host.getSourceFile = (name) => resolve(name) === resolve(path) ? source : undefined;
   const program = ts.createProgram([path], options, host);
@@ -20,6 +20,8 @@ export function parseReferences(path: string, text: string): { references: Sourc
     return { line: point.line + 1, column: point.character + 1 };
   });
   const references: SourceReference[] = [];
+  const shadowed = (identifier: ts.Identifier): boolean => !!program.getTypeChecker().getSymbolAtLocation(identifier)?.declarations?.some((declaration) =>
+    !(ts.getCombinedModifierFlags(declaration) & ts.ModifierFlags.Ambient));
   const literal = (node: ts.Node | undefined): string | undefined => node && (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) ? node.text : undefined;
   const add = (node: ts.Node, specifier: string | undefined, syntax: SourceReference["syntax"], typeOnly = false): void => {
     const point = source.getLineAndCharacterOfPosition(node.getStart(source));
@@ -41,10 +43,16 @@ export function parseReferences(path: string, text: string): { references: Sourc
       add(node, ts.isLiteralTypeNode(node.argument) ? literal(node.argument.literal) : undefined, "import-type", true);
     } else if (ts.isCallExpression(node)) {
       if (node.expression.kind === ts.SyntaxKind.ImportKeyword) add(node, literal(node.arguments[0]), "dynamic-import");
-      else if (ts.isIdentifier(node.expression) && node.expression.text === "require") add(node, literal(node.arguments[0]), "require");
+      else if (ts.isIdentifier(node.expression) && node.expression.text === "require") {
+        const local = shadowed(node.expression);
+        add(node, local ? undefined : literal(node.arguments[0]), local ? "shadowed-require" : "require");
+      }
       else if (ts.isPropertyAccessExpression(node.expression)) {
         const target = node.expression;
-        if (ts.isIdentifier(target.expression) && target.expression.text === "require" && target.name.text === "resolve") add(node, literal(node.arguments[0]), "require-resolve");
+        if (ts.isIdentifier(target.expression) && target.expression.text === "require" && target.name.text === "resolve") {
+          const local = shadowed(target.expression);
+          add(node, local ? undefined : literal(node.arguments[0]), local ? "shadowed-require" : "require-resolve");
+        }
         else if (["glob", "globEager"].includes(target.name.text) && ts.isMetaProperty(target.expression) && target.expression.keywordToken === ts.SyntaxKind.ImportKeyword) add(node, undefined, "glob");
       }
     }

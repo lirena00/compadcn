@@ -127,6 +127,14 @@ test("source cycles are recorded independently from registry cycles", (t) => {
   assert.equal(result.cycles[0].nodes.length, 2);
 });
 
+test("a locally shadowed require cannot create a fabricated module edge", (t) => {
+  const root = project(t, { "src/main.ts": 'function load(require: (name:string)=>unknown) { return require("./fabricated"); }' });
+  const result = build(root);
+  assert.equal(result.complete, false);
+  assert.ok(result.diagnostics.some(({ code }) => code === "SOURCE_SHADOWED_REQUIRE"));
+  assert.equal(result.nodes.some(({ path }) => path?.includes("fabricated")), false);
+});
+
 test("file limits, unsupported formats and scope escapes cannot produce a clean graph", (t) => {
   const root = project(t, { "src/a.ts": "export {};", "src/b.ts": "export {};", "src/content.mdx": "# content" });
   assert.ok(build(root, { maxFiles: 1 }).diagnostics.some(({ code }) => code === "GRAPH_FILE_LIMIT"));

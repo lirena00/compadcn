@@ -1,4 +1,6 @@
 import { CliError } from "../core/errors.js";
+import { dirname } from "node:path";
+import { findProject } from "../project/files.js";
 import { createInventorySession, type InventoryOptions } from "../inventory/build.js";
 import { fileId, finishGraph, GraphStore } from "./model.js";
 import { registryClosure } from "./registry.js";
@@ -30,8 +32,24 @@ export async function buildDependencyGraph(options: GraphOptions = {}): Promise<
     scope: session.report.scopes.find((root) => file.path.startsWith(root)) ?? session.report.projectRoot,
     state: "present", contentHash: file.contentHash, originConfidence: file.origin });
   const registry = await registryClosure(session, store, { scope, items: requested, maxItems, concurrency: options.concurrency ?? 4, offline: options.offline });
+  // Available-only destinations for other frameworks do not invalidate a graph
+  // which never selected them. Detail failures and potentially local candidates
+  // still block coverage; selected catalog manifests are checked by the closure.
+  const relevantItems = session.report.items.filter((item) => item.manifest !== "catalog" || item.mappedFiles.some(({ present }) => present));
+  const inventoryComplete = !session.report.diagnostics.some(({ severity }) => severity === "error") &&
+    session.report.sources.every(({ status }) => status === "ready") && relevantItems.every((item) => item.manifest !== "error" && item.manifest !== "stale" && !item.diagnostics.some(({ severity }) => severity === "error"));
+  const unselectedMappings = session.report.items.filter((item) => item.manifest === "catalog" && !item.mappedFiles.some(({ present }) => present) &&
+    item.diagnostics.some(({ severity }) => severity === "error") && (scope === "installed" || (requested.length > 0 && !requested.includes(item.qualifiedName))));
   const roots = options.workspace ? session.selected.workspace?.packages.map(({ root }) => root) ?? session.report.scopes : session.report.scopes;
   const source = sourceGraph(store, session.selected, roots, { maxFiles, signal: options.signal });
+  for (const node of store.nodes.values()) {
+    if (node.kind === "file" && node.path) {
+      try { store.node({ ...node, scope: findProject(dirname(node.path)).root }); } catch { /* Read failures are already retained as source diagnostics. */ }
+    } else if (node.kind === "item") {
+      const name = node.addresses?.filter((value) => value.startsWith("@")).sort()[0];
+      if (name) store.node({ ...node, label: name });
+    }
+  }
   const owners = new Map<string, Set<string>>();
   for (const edge of store.edges.values()) {
     if (edge.kind !== "item-file-candidate") continue;
@@ -46,7 +64,11 @@ export async function buildDependencyGraph(options: GraphOptions = {}): Promise<
   return finishGraph(store, {
     scope, projectRoot: session.report.projectRoot, scopes: [...new Set([...session.report.scopes, ...source.scopes])].sort(), seeds: registry.seeds,
     sources: session.report.sources, registrySources: [...new Map([...session.sources, ...registry.sources].map(({ descriptor }) => [descriptor.id, descriptor])).values()].sort((a, b) => a.id.localeCompare(b.id)),
-    diagnostics: [...session.report.diagnostics, ...session.report.sources.flatMap(({ diagnostics }) => diagnostics), ...registry.diagnostics, ...source.diagnostics],
-    coverage: { inventory: session.report.complete, registry: registry.complete, source: source.complete, usage: "not-analyzed" },
+    diagnostics: [...session.report.diagnostics, ...session.report.sources.flatMap(({ diagnostics }) => diagnostics),
+      ...relevantItems.flatMap((item) => item.diagnostics.map((diagnostic) => ({ ...diagnostic, message: `${item.qualifiedName}: ${diagnostic.message}` }))),
+      ...(unselectedMappings.length ? [{ code: "GRAPH_CATALOG_MAPPING_UNSELECTED", severity: "warning" as const,
+        message: `${unselectedMappings.length} available-only catalog entries have destination diagnostics outside the selected graph. Inspect inventory for their mapping details.` }] : []),
+      ...registry.diagnostics, ...source.diagnostics],
+    coverage: { inventory: inventoryComplete, registry: registry.complete, source: source.complete, usage: "not-analyzed" },
   });
 }

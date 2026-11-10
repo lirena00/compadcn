@@ -202,14 +202,17 @@ and retained CSS/theme/config/env/font effects. Registry relationships do not im
 that customized code still imports a dependency. Package nodes represent requests
 and observed import names; no lockfile-installed version is inferred. Presence,
 origin confidence, fetch status, and unresolved nodes remain visible. Shared files
-have one file node; item nodes retain workspace bindings.
+have one file node; item nodes retain workspace bindings. Inventory coverage in a
+graph concerns potentially local or explicitly inspected candidates. Destination
+diagnostics on unselected, available-only catalog records are summarized as a
+warning; selecting an affected item still returns incomplete graph coverage.
 
 The pinned TypeScript 5.8.3 compiler API parses JS/TS/JSX/TSX imports, re-exports,
 barrels, literal dynamic imports, literal CommonJS references, and type-only
 references. Evidence includes one-based source locations and syntax. Resolution
 covers TS/JS paths, applicable Vite references, package imports, and unlinked
 workspace exports. Comments do not create edges. Computed imports/requires, module
-globs, unresolved mappings, and unsupported MDX/Vue/Svelte parsing make source
+globs, locally shadowed `require` calls, unresolved mappings, and unsupported MDX/Vue/Svelte parsing make source
 coverage incomplete. Non-code imported files are retained without interpreting
 their internal dependencies. Framework configs are not executed.
 
@@ -221,14 +224,15 @@ the later audit service. Shared effects and unsupported resources remain retaine
 
 JSON contains a graph version, deterministic content snapshot ID, typed nodes and
 edges, direct dependency/dependent indexes, source/registry cycles with edge IDs,
-coverage flags, and diagnostics. `--focus` selects a direct neighborhood;
+coverage flags, manifest hashes/fetch status, and diagnostics. `--focus` selects a direct neighborhood;
 `--reverse` selects dependents, and `--transitive` follows the full closure. Ambiguous
 names return node choices instead of picking a workspace. A focused view includes
 its base snapshot ID. Mermaid uses opaque node IDs and encoded labels, with edge
 kinds/phases and cycle/unresolved markers from the same graph. `--json --mermaid`
 includes the diagram text in the structured response.
 
-Graphs are bounded by `--max-items` (default 2,000) and `--max-files` (default
+Registry traversal is bounded by `--max-items` (default 2,000); extra relationships
+point to an unresolved limit node. Source parsing uses `--max-files` (default
 20,000); files above 2 MiB are not parsed. Hitting a limit returns partial coverage.
 Cycles are detected iteratively, including self-loops. Incomplete JSON uses exit
 code `2`, code `GRAPH_INCOMPLETE`, and `error.details.graph`. Plain diagnostics go

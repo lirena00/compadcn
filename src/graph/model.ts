@@ -1,5 +1,5 @@
 import { CliError } from "../core/errors.js";
-import { digest } from "../core/hash.js";
+import { canonicalJSON, digest } from "../core/hash.js";
 import type { DependencyGraph, EdgeKind, GraphCycle, GraphEdge, GraphNode } from "./types.js";
 
 export const nodeId = (...parts: string[]): string => `n${digest(JSON.stringify(parts))}`;
@@ -18,8 +18,8 @@ export class GraphStore {
   }
 
   edge(edge: Omit<GraphEdge, "id">): string {
-    const id = `e${digest(JSON.stringify([edge.from, edge.to, edge.kind, edge.phase, edge.evidence ?? null]))}`;
-    this.edges.set(id, { ...edge, id });
+    const id = `e${digest(canonicalJSON([edge.from, edge.to, edge.kind, edge.phase, edge.evidence ?? null]))}`;
+    this.edges.set(id, { id, from: edge.from, to: edge.to, kind: edge.kind, phase: edge.phase, status: edge.status, ...(edge.evidence ? { evidence: edge.evidence } : {}) });
     return id;
   }
 }
@@ -48,6 +48,7 @@ function cycles(nodes: GraphNode[], edges: GraphEdge[], kind: GraphCycle["kind"]
   }
   const assigned = new Set<string>();
   const result: GraphCycle[] = [];
+  const cycleFor = new Map<string, GraphCycle>();
   for (const id of order.reverse()) {
     if (assigned.has(id)) continue;
     const component = new Set<string>();
@@ -59,8 +60,15 @@ function cycles(nodes: GraphNode[], edges: GraphEdge[], kind: GraphCycle["kind"]
       stack.push(...reverse.get(next)!);
     }
     if (component.size === 1 && !forward.get(id)!.includes(id)) continue;
-    result.push({ kind, nodes: [...component].sort(), edges: selected.filter(({ from, to }) => component.has(from) && component.has(to)).map(({ id }) => id).sort() });
+    const cycle = { kind, nodes: [...component].sort(), edges: [] as string[] };
+    result.push(cycle);
+    for (const node of component) cycleFor.set(node, cycle);
   }
+  for (const edge of selected) {
+    const cycle = cycleFor.get(edge.from);
+    if (cycle && cycle === cycleFor.get(edge.to)) cycle.edges.push(edge.id);
+  }
+  for (const cycle of result) cycle.edges.sort();
   return result.sort((a, b) => a.nodes[0]!.localeCompare(b.nodes[0]!));
 }
 
@@ -71,6 +79,7 @@ export function finishGraph(store: GraphStore, input: GraphInput): DependencyGra
   const initialEdges = [...store.edges.values()].map((edge) => ({ ...edge,
     status: store.nodes.get(edge.to)?.state === "unresolved" ? "unresolved" as const : edge.status,
   })).sort((a, b) => a.id.localeCompare(b.id));
+  for (const { from, to } of initialEdges) if (!store.nodes.has(from) || !store.nodes.has(to)) throw new CliError("GRAPH_INVALID", "Graph edge refers to a missing node.");
   const diagnostics = [...new Map(input.diagnostics.map((value) => [JSON.stringify(value), value])).values()].sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
   const graphCycles = [...cycles(nodes, initialEdges, "registry"), ...cycles(nodes, initialEdges, "source")];
   const cycleEdges = new Set(graphCycles.flatMap(({ edges }) => edges));
@@ -83,8 +92,9 @@ export function finishGraph(store: GraphStore, input: GraphInput): DependencyGra
     dependencies[from].push(to); dependents[to].push(from);
   }
   for (const index of [dependencies, dependents]) for (const id of Object.keys(index)) index[id] = [...new Set(index[id])].sort();
-  const complete = input.coverage.inventory && input.coverage.registry && input.coverage.source && !diagnostics.some(({ severity }) => severity === "error");
-  const snapshotId = digest(JSON.stringify([input.scope, input.projectRoot, input.scopes, input.seeds, nodes, edges, input.coverage, diagnostics]));
+  const complete = input.coverage.inventory && input.coverage.registry && input.coverage.source && !diagnostics.some(({ severity }) => severity === "error") &&
+    !nodes.some(({ state }) => state === "unresolved") && !edges.some(({ status }) => status === "unresolved");
+  const snapshotId = digest(canonicalJSON([input.scope, input.projectRoot, input.scopes, input.seeds, nodes.map(({ fetch: _fetch, ...node }) => node), edges, input.coverage, diagnostics]));
   return { ...input, diagnostics, graphVersion: 1, snapshotId, nodes, edges, cycles: graphCycles, dependencies, dependents, complete,
     counts: {
       items: nodes.filter(({ kind }) => kind === "item").length, localFiles: nodes.filter(({ kind }) => kind === "file").length,

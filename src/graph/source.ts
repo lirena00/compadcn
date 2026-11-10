@@ -54,7 +54,8 @@ export function sourceGraph(store: GraphStore, project: ProjectContext, roots: s
         const safeReference = reference.specifier && /^[a-z][a-z\d+.-]*:/i.test(reference.specifier) && !reference.specifier.startsWith("node:") ? "[URL or virtual import]" : reference.specifier;
         const evidence = { path, line: reference.line, column: reference.column, syntax: reference.syntax, ...(safeReference ? { reference: safeReference } : {}) };
         try {
-          if (!reference.specifier) throw new CliError("SOURCE_COMPUTED_REFERENCE", "Computed imports/requires and module globs cannot be resolved by this graph adapter.");
+          if (!reference.specifier) throw new CliError(reference.syntax === "shadowed-require" ? "SOURCE_SHADOWED_REQUIRE" : "SOURCE_COMPUTED_REFERENCE",
+            reference.syntax === "shadowed-require" ? "Locally bound require calls need an explicit resolution adapter." : "Computed imports/requires and module globs cannot be resolved by this graph adapter.");
           const target = resolver.resolve(reference.specifier, path);
           let to: string;
           if (target.kind === "file") {

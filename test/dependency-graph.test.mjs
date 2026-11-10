@@ -42,6 +42,74 @@ test("snapshots remain stable across fresh network and cached metadata", async (
   const offline = await buildDependencyGraph({ cwd: root, cacheDir: cache, offline: true });
   assert.equal(online.snapshotId, offline.snapshotId);
   assert.deepEqual(online.counts, offline.counts);
+  assert.equal(online.nodes.find(({ kind }) => kind === "item").fetch.cache, "network");
+  assert.equal(offline.nodes.find(({ kind }) => kind === "item").fetch.cache, "fresh-cache");
+});
+
+test("upstream content changes update the snapshot even when graph edges stay the same", async (t) => {
+  let content = "export const Button=1;";
+  const server = await registryServer(t, (req, res) => {
+    const value = { ...button, files: [{ ...button.files[0], content }] };
+    json(res, req.url.includes("registry.json") ? catalog([value]) : value);
+  });
+  const root = createProject(t, { "package.json": '{"dependencies":{"motion":"^12"}}', "components.json": JSON.stringify({ aliases: { ui: "./ui" }, registries: { "@shadcn": `${server.url}/{name}.json` } }), "ui/button.tsx": "export const Button=1;" });
+  const first = await buildDependencyGraph({ cwd: root, cacheDir: false });
+  content = "export const Button=2;";
+  const second = await buildDependencyGraph({ cwd: root, cacheDir: false });
+  assert.notEqual(first.snapshotId, second.snapshotId);
+  assert.deepEqual(first.edges, second.edges);
+});
+
+test("request completion order cannot change which transitive items fit within a limit", async (t) => {
+  let slowA = true;
+  const values = [
+    { ...button, name: "parent", registryDependencies: ["@shadcn/a", "@shadcn/b"], files: [] },
+    { ...button, name: "a", registryDependencies: ["@shadcn/c"], files: [] },
+    { ...button, name: "b", registryDependencies: ["@shadcn/d"], files: [] },
+    { ...button, name: "c", files: [] }, { ...button, name: "d", files: [] },
+  ];
+  const server = await registryServer(t, async (req, res) => {
+    if (req.url.includes("registry.json")) return json(res, catalog(values));
+    const name = req.url.split("/").at(-1).replace(/\.json$/, "");
+    if ((name === "a" && slowA) || (name === "b" && !slowA)) await new Promise((resolve) => setTimeout(resolve, 15));
+    json(res, values.find((item) => item.name === name));
+  });
+  const root = createProject(t, { "package.json": '{"dependencies":{"motion":"^12"}}', "components.json": JSON.stringify({ aliases: { ui: "./ui" }, registries: { "@shadcn": `${server.url}/{name}.json` } }) });
+  const options = { cwd: root, cacheDir: false, scope: "catalog", items: ["parent"], maxItems: 4 };
+  const first = await buildDependencyGraph(options);
+  slowA = false;
+  const second = await buildDependencyGraph(options);
+  assert.equal(first.snapshotId, second.snapshotId);
+  assert.ok(first.nodes.some(({ label }) => label === "@shadcn/c"));
+  assert.equal(first.nodes.some(({ label }) => label === "@shadcn/d"), false);
+});
+
+test("canonical snapshots ignore property insertion order, and focused views recompute cycle flags", () => {
+  const input = { scope: "installed", projectRoot: "/fixture", scopes: ["/fixture"], seeds: [], sources: [], registrySources: [], diagnostics: [], coverage: { inventory: true, registry: true, source: true, usage: "not-analyzed" } };
+  const first = new GraphStore();
+  const second = new GraphStore();
+  for (const value of ["a", "b", "c"]) {
+    const id = nodeId(value);
+    first.node({ id, kind: "file", label: value, scope: "/fixture", state: "present" });
+    second.node({ state: "present", scope: "/fixture", label: value, kind: "file", id });
+  }
+  for (const store of [first, second]) {
+    for (const [from, to] of [["a", "b"], ["b", "c"], ["c", "a"]]) store.edge({ from: nodeId(from), to: nodeId(to), kind: "file-import", status: "resolved", phase: "runtime" });
+  }
+  const graph = finishGraph(first, input);
+  assert.equal(graph.snapshotId, finishGraph(second, input).snapshotId);
+  const view = selectGraph(graph, "a");
+  assert.equal(view.cycles.length, 0);
+  assert.equal(view.edges.some(({ cycle }) => cycle), false);
+});
+
+test("unresolved package declarations cannot be reported as a complete graph", async (t) => {
+  const value = { ...button, dependencies: ["git+https://example.test/package.git"] };
+  const server = await registryServer(t, (req, res) => json(res, req.url.includes("registry.json") ? catalog([value]) : value));
+  const root = createProject(t, { "package.json": "{}", "components.json": JSON.stringify({ aliases: { ui: "./ui" }, registries: { "@shadcn": `${server.url}/{name}.json` } }), "ui/button.tsx": "export {};" });
+  const graph = await buildDependencyGraph({ cwd: root, cacheDir: false });
+  assert.equal(graph.complete, false);
+  assert.ok(graph.edges.some(({ kind, status }) => kind === "declared-package" && status === "unresolved"));
 });
 
 test("focused dependent views include applications and retain the base snapshot", async (t) => {
@@ -100,4 +168,17 @@ test("API option validation fails before registry requests", async (t) => {
     await assert.rejects(buildDependencyGraph({ cwd: root, cacheDir: false, ...options }), (error) => ["INVALID_OPTIONS", "INVALID_ARGUMENT"].includes(error.code));
   }
   assert.equal(server.requests.length, 0);
+});
+
+test("available-only framework destinations do not block a selected installed graph", async (t) => {
+  const unavailable = { name: "next-page", type: "registry:block", files: [{ path: "page.tsx", type: "registry:page", target: "app/server/page.tsx" }] };
+  const server = await registryServer(t, (req, res) => json(res, req.url.includes("registry.json") ? catalog([button, unavailable]) : req.url.includes("next-page") ? unavailable : button));
+  const root = createProject(t, { "package.json": '{"dependencies":{"react":"19","motion":"^12"}}',
+    "components.json": JSON.stringify({ aliases: { ui: "./ui" }, registries: { "@shadcn": `${server.url}/{name}.json` } }), "ui/button.tsx": "export {};" });
+  const installed = await buildDependencyGraph({ cwd: root, cacheDir: false });
+  assert.equal(installed.complete, true, JSON.stringify(installed.diagnostics));
+  assert.ok(installed.diagnostics.some(({ code }) => code === "GRAPH_CATALOG_MAPPING_UNSELECTED"));
+  const selected = await buildDependencyGraph({ cwd: root, cacheDir: false, scope: "catalog", items: ["next-page"] });
+  assert.equal(selected.complete, false);
+  assert.ok(selected.diagnostics.some(({ code }) => code === "FILE_TARGET_UNSUPPORTED"));
 });

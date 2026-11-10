@@ -14,6 +14,8 @@ export interface GraphNode {
   sourceIds?: string[];
   itemType?: string;
   manifest?: "fetched" | "stale" | "error";
+  manifestHash?: string;
+  fetch?: { cache: "network" | "fresh-cache" | "revalidated" | "stale-cache"; fetchedAt: string };
   originConfidence?: "candidate" | "ambiguous" | "unknown";
   ownershipKey?: string;
   path?: string;

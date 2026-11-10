@@ -12,6 +12,7 @@ const execute = promisify(execFile);
 const cli = fileURLToPath(new URL("../dist/cli.js", import.meta.url));
 const blocker = new URL("../fixtures/cli/register-block-workflows.mjs", import.meta.url).href;
 const terminal = new URL("../fixtures/cli/simulate-terminal.mjs", import.meta.url).href;
+const analysisBlocker = new URL("../fixtures/cli/register-block-analysis.mjs", import.meta.url).href;
 const button = { name: "button", type: "registry:ui", files: [{ path: "ui/button.tsx", type: "registry:ui", content: "export const Button=1;" }] };
 
 async function fixture(t, extra = {}) {
@@ -107,11 +108,20 @@ test("graph validates options before fetching and leaves project files unchanged
 
 test("help and API import do not initialize TypeScript, scan files or fetch catalogs", async (t) => {
   const { root, server } = await fixture(t);
-  const result = await run(root, ["--json", "graph", "--help"]);
+  const result = await run(root, ["--json", "graph", "--help"], [blocker, analysisBlocker]);
   assert.equal(result.status, 0);
   assert.match(JSON.parse(result.stdout).data.help, /--mermaid/);
   assert.match(JSON.parse(result.stdout).data.help, /--focus <reference>/);
   const api = await import(new URL("../dist/index.js", import.meta.url).href);
   for (const name of ["buildDependencyGraph", "graphNeighbors", "selectGraph", "formatMermaid"]) assert.equal(typeof api[name], "function");
   assert.equal(server.requests.length, 0);
+});
+
+test("public graph helpers can be imported while all analysis engines are blocked", async (t) => {
+  const { root } = await fixture(t);
+  const entry = new URL("../dist/index.js", import.meta.url).href;
+  const script = `const api=await import(${JSON.stringify(entry)}); if(typeof api.buildDependencyGraph !== 'function')throw new Error('Missing graph API'); console.log('imported');`;
+  const result = await execute(process.execPath, ["--import", blocker, "--import", analysisBlocker, "--input-type=module", "--eval", script], { cwd: root, encoding: "utf8", timeout: 10000 });
+  assert.equal(result.stdout, "imported\n");
+  assert.equal(result.stderr, "");
 });
