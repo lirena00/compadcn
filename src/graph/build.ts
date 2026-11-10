@@ -40,7 +40,8 @@ export async function buildDependencyGraph(options: GraphOptions = {}): Promise<
     session.report.sources.every(({ status }) => status === "ready") && relevantItems.every((item) => item.manifest !== "error" && item.manifest !== "stale" && !item.diagnostics.some(({ severity }) => severity === "error"));
   const unselectedMappings = session.report.items.filter((item) => item.manifest === "catalog" && !item.mappedFiles.some(({ present }) => present) &&
     item.diagnostics.some(({ severity }) => severity === "error") && (scope === "installed" || (requested.length > 0 && !requested.includes(item.qualifiedName))));
-  const roots = options.workspace ? session.selected.workspace?.packages.map(({ root }) => root) ?? session.report.scopes : session.report.scopes;
+  const workspaceRoots = session.selected.workspace ? [session.selected.workspace.root, ...session.selected.workspace.packages.map(({ root }) => root)] : session.report.scopes;
+  const roots = options.workspace ? [...new Set([...workspaceRoots, ...session.report.scopes])] : session.report.scopes;
   const source = sourceGraph(store, session.selected, roots, { maxFiles, signal: options.signal });
   for (const node of store.nodes.values()) {
     if (node.kind === "file" && node.path) {
