@@ -1,5 +1,6 @@
 import { readFileSync, existsSync, readdirSync, statSync } from "fs";
 import { join, resolve } from "path";
+import { CliError, toCliError } from "../core/errors.js";
 
 interface ComponentsConfig {
   aliases: {
@@ -14,14 +15,18 @@ export async function getInstalledComponents(): Promise<string[]> {
     // console.log(configPath);
 
     if (!existsSync(configPath)) {
-      throw new Error(
-        "components.json not found. Make sure you're in a ShadCN project."
+      throw new CliError(
+        "CONFIG_NOT_FOUND", "components.json not found. Make sure you're in a shadcn project."
       );
     }
 
     const config: ComponentsConfig = JSON.parse(
       readFileSync(configPath, "utf-8")
     );
+
+    if (!config || typeof config.aliases?.ui !== "string" || !config.aliases.ui.trim()) {
+      throw new CliError("CONFIG_INVALID", "components.json must define a nonempty aliases.ui path.");
+    }
 
     let uiFolderPath = config.aliases.ui;
 
@@ -44,7 +49,6 @@ export async function getInstalledComponents(): Promise<string[]> {
 
     return componentFiles.map((file) => file.replace(/\.(tsx)$/, ""));
   } catch (error) {
-    console.error("Error reading installed components:", error);
-    return [];
+    throw toCliError(error, "COMPONENT_SCAN_FAILED", "Could not read installed components.");
   }
 }

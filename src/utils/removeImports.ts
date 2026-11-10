@@ -1,7 +1,8 @@
-import { readFileSync, writeFileSync, readdirSync, statSync } from "fs";
+import { readFileSync, writeFileSync, readdirSync, statSync, existsSync } from "fs";
 import { join } from "path";
 import { spinner } from "@clack/prompts";
 import chalk from "chalk";
+import { toCliError } from "../core/errors.js";
 
 export async function removeImportsFromFiles(
   componentNames: string[]
@@ -44,7 +45,7 @@ export async function removeImportsFromFiles(
     s.stop(chalk.green(`Cleaned imports from ${modifiedCount} files`));
   } catch (error) {
     s.stop(chalk.red("Failed to remove imports"));
-    throw error;
+    throw toCliError(error, "IMPORT_CLEANUP_FAILED", "Could not finish import cleanup.");
   }
 }
 
@@ -76,13 +77,13 @@ async function getAllFiles(): Promise<string[]> {
         }
       }
     } catch (error) {
-      // Ignore errors for directories that don't exist
+      throw toCliError(error, "IMPORT_CLEANUP_FAILED", `Could not scan ${dir}.`);
     }
   };
 
   for (const dir of srcDirs) {
     const dirPath = join(process.cwd(), dir);
-    walkDir(dirPath);
+    if (existsSync(dirPath)) walkDir(dirPath);
   }
 
   return filesToCheck;

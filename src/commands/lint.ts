@@ -1,3 +1,4 @@
+import { toCliError } from "../core/errors.js";
 import { intro, outro, note, log, confirm, isCancel } from "@clack/prompts";
 
 import chalk from "chalk";
@@ -61,18 +62,8 @@ export async function runLintUI() {
     if (shouldRemove) {
       log.step("Removing unused components...");
 
-      try {
-        const { runRemoveUI } = await import("./remove.js");
-        await runRemoveUI(unusedComponents);
-      } catch (removeError) {
-        log.error(chalk.red("Error removing components"));
-        console.error(removeError);
-        outro(
-          chalk.red(
-            "Failed to remove components. You can run the command manually."
-          )
-        );
-      }
+      const { runRemoveUI } = await import("./remove.js");
+      await runRemoveUI(unusedComponents);
     } else {
       const removeCommand = `shadcn-plus remove ${unusedComponents.join(" ")}`;
       note(chalk.cyan(removeCommand), "Command to remove unused components");
@@ -84,8 +75,6 @@ export async function runLintUI() {
       );
     }
   } catch (error) {
-    log.error(chalk.red("Error during component linting"));
-    console.error(error);
-    outro(chalk.red("Failed to run component linter."));
+    throw toCliError(error, "LINT_FAILED", "Component linting failed.");
   }
 }

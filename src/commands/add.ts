@@ -1,3 +1,4 @@
+import { CliError, toCliError } from "../core/errors.js";
 import {
   intro,
   outro,
@@ -23,7 +24,7 @@ export async function runAddUI(
     let installedComponents: string[] = [];
     if (options?.overwrite) {
       log.step("Overwrite mode enabled. Existing files will be replaced.");
-      installedComponents = allComponents.map((comp) => comp.value);
+      installedComponents = await getInstalledComponents();
     } else {
       log.step("Checking installed components...");
       installedComponents = await getInstalledComponents();
@@ -50,8 +51,7 @@ export async function runAddUI(
             )}`
           )
         );
-        outro(chalk.red("Cannot proceed with installation."));
-        return;
+        throw new CliError("COMPONENT_NOT_FOUND", "Unknown components: " + invalidComponents.join(", "));
       }
 
       const alreadyInstalled = componentsToAdd.filter((comp) =>
@@ -138,8 +138,6 @@ ${chalk.gray(
     await installComponents(finalComponentsToAdd, options);
     outro(chalk.cyan("Done! Components have been installed successfully."));
   } catch (error) {
-    log.error(chalk.red("Error during component installation"));
-    console.error(error);
-    outro(chalk.red("Installation failed. Please check the error above."));
+    throw toCliError(error, "INSTALL_FAILED", "Component installation failed.");
   }
 }

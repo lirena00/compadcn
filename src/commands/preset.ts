@@ -1,3 +1,4 @@
+import { toCliError } from "../core/errors.js";
 import {
   intro,
   outro,
@@ -255,14 +256,13 @@ async function handleCreatePreset() {
   }
 
   try {
-    await createPreset(presetName, selectedComponents, {
+    const created = await createPreset(presetName, selectedComponents, {
       description: description || undefined,
       base: basePresets.length > 0 ? basePresets.join(",") : undefined,
     });
-    outro(chalk.green("Preset created successfully!"));
+    if (created) outro(chalk.green("Preset created successfully!"));
   } catch (error) {
-    console.error(chalk.red("Error creating preset:"), error);
-    outro(chalk.red("Failed to create preset. Please check the error above."));
+    throw toCliError(error, "PRESET_SAVE_FAILED", "Could not create the custom preset.");
   }
 }
 

@@ -1,3 +1,4 @@
+import { CliError, toCliError } from "../core/errors.js";
 import {
   confirm,
   isCancel,
@@ -24,7 +25,10 @@ interface ListOptions {
 
 export async function listPresets(options: ListOptions = {}) {
   const builtinPresets = presets.presets;
-  const customPresets = loadCustomPresets();
+  if (options.builtin && options.custom) {
+    throw new CliError("INVALID_OPTIONS", "Use either --builtin or --custom, not both.");
+  }
+  const customPresets = options.builtin ? { presets: {} } : loadCustomPresets();
 
   console.log(chalk.cyan.bold("\nAvailable Presets\n"));
 
@@ -77,8 +81,7 @@ export async function showPreset(presetName: string) {
   const preset = await findPreset(presetName);
 
   if (!preset) {
-    outro(chalk.red(`Preset "${presetName}" not found.`));
-    return;
+    throw new CliError("PRESET_NOT_FOUND", `Preset "${presetName}" not found.`);
   }
 
   console.log(chalk.cyan.bold(`\n${preset.label}\n`));
@@ -105,8 +108,7 @@ export async function installPreset(presetName: string) {
   const preset = await findPreset(presetName);
 
   if (!preset) {
-    outro(chalk.red(`Preset "${presetName}" not found.`));
-    return;
+    throw new CliError("PRESET_NOT_FOUND", `Preset "${presetName}" not found.`);
   }
 
   console.log(chalk.cyan(`\nInstalling preset: ${preset.label}`));
@@ -190,8 +192,7 @@ export async function installPreset(presetName: string) {
       outro(chalk.green("Preset installed successfully!"));
     }
   } catch (error) {
-    console.error(chalk.red("Installation error:"), error);
-    outro(chalk.red("Installation failed. Please check the error above."));
+    throw toCliError(error, "INSTALL_FAILED", "Preset installation failed.");
   }
 }
 export async function createPreset(
@@ -201,15 +202,13 @@ export async function createPreset(
 ) {
   // Validate preset name
   if (!presetName || presetName.trim().length === 0) {
-    outro(chalk.red("Preset name is required."));
-    return;
+    throw new CliError("INVALID_PRESET_NAME", "Preset name is required.");
   }
 
   // Check if preset already exists
   const existingPreset = await findPreset(presetName);
   if (existingPreset) {
-    outro(chalk.red(`Preset "${presetName}" already exists.`));
-    return;
+    throw new CliError("PRESET_EXISTS", `Preset "${presetName}" already exists.`);
   }
 
   let baseComponents: string[] = [];
@@ -221,8 +220,7 @@ export async function createPreset(
     for (const baseName of baseNames) {
       const basePreset = await findPreset(baseName);
       if (!basePreset) {
-        outro(chalk.red(`Base preset "${baseName}" not found.`));
-        return;
+        throw new CliError("PRESET_NOT_FOUND", `Base preset "${baseName}" not found.`);
       }
 
       const newComponents = basePreset.components.map((comp) => comp.value);
@@ -255,7 +253,7 @@ export async function createPreset(
 
     if (isCancel(selectedComponents)) {
       outro(chalk.yellow("Creation cancelled"));
-      return;
+      return false;
     }
 
     components = selectedComponents as string[];
@@ -275,8 +273,7 @@ export async function createPreset(
   );
 
   if (invalidComponents.length > 0) {
-    outro(chalk.red(`Invalid components: ${invalidComponents.join(", ")}`));
-    return;
+    throw new CliError("COMPONENT_NOT_FOUND", "Invalid components: " + invalidComponents.join(", "));
   }
 
   // Get description if not provided
@@ -289,7 +286,7 @@ export async function createPreset(
 
     if (isCancel(descriptionInput)) {
       outro(chalk.yellow("Creation cancelled"));
-      return;
+      return false;
     }
 
     description =
@@ -305,6 +302,13 @@ export async function createPreset(
     .replace(/[^a-z0-9-]/g, "")
     .replace(/-+/g, "-")
     .replace(/^-|-$/g, "");
+
+  if (!presetId) {
+    throw new CliError("INVALID_PRESET_NAME", "Preset name must contain letters or numbers.");
+  }
+  if (await findPreset(presetId)) {
+    throw new CliError("PRESET_EXISTS", `Preset id "${presetId}" already exists.`);
+  }
 
   const componentObjects = allComponents.filter((comp) =>
     components.includes(comp.value)
@@ -322,9 +326,9 @@ export async function createPreset(
       console.log(chalk.gray(`   Based on: ${basePresetNames.join(", ")}`));
     }
     console.log();
+    return true;
   } catch (error) {
-    console.error(chalk.red("Creation error:"), error);
-    outro(chalk.red("Failed to create preset."));
+    throw toCliError(error, "PRESET_SAVE_FAILED", "Could not save the custom preset.");
   }
 }
 
@@ -332,7 +336,7 @@ export async function deletePreset(presetName: string) {
   const customPresets = loadCustomPresets();
 
   let presetId = presetName;
-  let preset = customPresets.presets[presetName];
+  let preset = customPresets.presets[presetId];
 
   if (!preset) {
     const presetEntry = Object.entries(customPresets.presets).find(
@@ -346,8 +350,7 @@ export async function deletePreset(presetName: string) {
   }
 
   if (!preset) {
-    outro(chalk.red(`Custom preset "${presetName}" not found.`));
-    return;
+    throw new CliError("PRESET_NOT_FOUND", `Custom preset "${presetName}" not found.`);
   }
 
   console.log(chalk.yellow(`\nDeleting preset: ${preset.label}`));
@@ -366,10 +369,9 @@ export async function deletePreset(presetName: string) {
   }
 
   try {
-    deleteCustomPreset(presetName);
+    deleteCustomPreset(presetId);
     outro(chalk.green(`Preset "${preset.label}" deleted successfully!`));
   } catch (error) {
-    console.error(chalk.red("Deletion error:"), error);
-    outro(chalk.red("Failed to delete preset."));
+    throw toCliError(error, "PRESET_DELETE_FAILED", "Could not delete the custom preset.");
   }
 }

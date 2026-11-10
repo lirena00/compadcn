@@ -2,6 +2,7 @@ import { readFileSync, existsSync, readdirSync, statSync } from "fs";
 import { join } from "path";
 import { spinner } from "@clack/prompts";
 import chalk from "chalk";
+import { toCliError } from "../core/errors.js";
 
 export async function scanForUsedComponents(
   installedComponents: string[]
@@ -30,7 +31,7 @@ export async function scanForUsedComponents(
     return Array.from(usedComponents);
   } catch (error) {
     s.stop(chalk.red("Scan failed"));
-    throw error;
+    throw toCliError(error, "SOURCE_SCAN_FAILED", "Could not finish scanning source files.");
   }
 }
 
@@ -66,7 +67,9 @@ function scanDirectory(
         scanFile(itemPath, installedComponents, usedComponents);
       }
     }
-  } catch (error) {}
+  } catch (error) {
+    throw toCliError(error, "SOURCE_SCAN_FAILED", `Could not scan ${dirPath}.`);
+  }
 }
 
 function scanFile(
@@ -94,5 +97,7 @@ function scanFile(
         usedComponents.add(component);
       }
     }
-  } catch (error) {}
+  } catch (error) {
+    throw toCliError(error, "SOURCE_SCAN_FAILED", `Could not read ${filePath}.`);
+  }
 }

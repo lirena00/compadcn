@@ -43,8 +43,9 @@ preset workflows do not yet support `--json` or `--plain`; they return
 `OUTPUT_MODE_UNSUPPORTED` instead of mixing terminal text with machine output.
 Workflows requiring prompts fail with `INTERACTIVE_REQUIRED` when no interactive
 terminal is available or `--no-interactive` is set. `preset list` and `preset show`
-remain available without prompts. Their legacy internal error handling will be
-converted with the remaining workflows.
+remain available without prompts. Legacy workflows return nonzero exit codes for
+validation, filesystem, and subprocess failures; cancellation remains a normal
+outcome. File cleanup is still non-transactional until plan/apply is implemented.
 
 ## Installation
 
