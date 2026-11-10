@@ -38,7 +38,7 @@ immediately. JSON responses contain `schemaVersion`, `toolVersion`, `status`, an
 either `data` or `error`. Plain CLI errors go to stderr; JSON errors are returned
 as one structured response on stdout. Parser/runner errors return exit code `2`.
 
-Help, version, and CLI errors support these output modes. Existing component and
+Doctor, help, version, and CLI errors support these output modes. Existing component and
 preset workflows do not yet support `--json` or `--plain`; they return
 `OUTPUT_MODE_UNSUPPORTED` instead of mixing terminal text with machine output.
 Workflows requiring prompts fail with `INTERACTIVE_REQUIRED` when no interactive
@@ -60,6 +60,52 @@ yarn global add shadcn-plus
 ```
 
 ## Commands
+
+### `shadcn-plus doctor`
+
+Inspect project configuration without installing packages, fetching registries,
+executing framework configs, or modifying project files.
+
+```bash
+shadcn-plus doctor
+shadcn-plus doctor --cwd ./apps/web --json
+shadcn-plus --plain doctor --cwd ./src/features
+```
+
+Doctor selects the nearest `package.json` from the chosen directory, stopping at
+the Git/worktree boundary. At a workspace root, select the intended app/package
+with `doctor --cwd`; it does not choose an app automatically. `--cwd` currently
+belongs to `doctor` only.
+
+It reports the framework inferred from dependencies, conventional source folders,
+package manager and its metadata location, workspace members, compiler configs,
+and resolved `components.json` aliases. Supported discovery fixtures cover:
+
+- Next.js with and without `src`, and Vite React in TypeScript and JavaScript.
+- TS/JS path mappings, JSONC, package/local `extends`, and Vite project references.
+- Local `package.json#imports` and shared workspace package `exports`, including
+  wildcard source extensions such as `./src/components/*.tsx`.
+- pnpm YAML and package.json workspace arrays/object patterns, with exclusions.
+
+Unresolved aliases, conflicting destinations/conditions, malformed direct configs,
+and paths outside the selected project/workspace make discovery incomplete and
+return exit code `2`. A resolved UI directory that has not been created yet is a
+warning. Generic React and unknown frameworks are identified with warnings: this
+command checks configuration locations, not build or usage-analysis compatibility.
+It does not run a compiler/typecheck or evaluate aliases in executable Vite/Next
+configs. Distinct conditional exports and external workspace patterns need explicit
+support and are reported instead of guessed.
+
+JSON success stores the context in `data`. Incomplete discovery uses the existing
+error envelope with code `PROJECT_NOT_READY` and the partial context under
+`error.details.context`. Fatal input errors such as `CWD_INVALID` use the same error
+contract. Plain mode is also the default when output is piped. Configuration
+contents and registry authentication values are excluded from the report.
+
+The API exposes `await discoverProject({ cwd })` with the same context and
+diagnostics, without changing `process.cwd()`. This service is the foundation for
+the upcoming inventory/graph commands. Existing component workflows still use
+their legacy discovery and cleanup behavior until those units are implemented.
 
 ### `shadcn-plus add [components...]`
 
