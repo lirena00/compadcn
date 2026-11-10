@@ -29,12 +29,13 @@ export function createProgram(options: ProgramOptions = {}): Command {
     const outputOptions = program.opts<OutputOptions>();
     validateOutputOptions(outputOptions);
     if (command === program) return;
+    if (command === doctorCommand) return;
 
     if (outputOptions.json || outputOptions.plain) {
       throw new CliError(
         "OUTPUT_MODE_UNSUPPORTED",
         "This legacy workflow does not support --json or --plain yet. " +
-          "Help and version output support both modes."
+          "Doctor, help, and version output support both modes."
       );
     }
 
@@ -56,6 +57,15 @@ export function createProgram(options: ProgramOptions = {}): Command {
       renderTitle();
     }
   });
+
+  const doctorCommand = program
+    .command("doctor")
+    .description("Inspect project configuration and resolved aliases without changing files")
+    .option("-c, --cwd <path>", "Project directory (or a directory inside the target package)", ".")
+    .action(async (doctorOptions: { cwd: string }) => {
+      const { runDoctor } = await import("./doctor.js");
+      runDoctor(doctorOptions.cwd, program.opts<OutputOptions>());
+    });
 
   const presetCommand = program
     .command("preset")
