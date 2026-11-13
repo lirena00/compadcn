@@ -1,0 +1,9 @@
+{
+  "policyVersion": 1,
+  "rules": {
+    "unused-item": "error",
+    "unused-file": "error",
+    "unused-package": "warning",
+    "unknown-usage": "warning"
+  }
+}

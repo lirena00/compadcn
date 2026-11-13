@@ -14,7 +14,9 @@
     }
   },
   "files": [
-    "dist/**/*"
+    "dist/**/*",
+    "skills/shadcn-plus/SKILL.md",
+    "examples/ci/*"
   ],
   "scripts": {
     "build": "tsc",

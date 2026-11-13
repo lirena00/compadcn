@@ -16,6 +16,11 @@ pids
 *.seed
 *.pid.lock
 
+# Keep reviewable check policies/baselines trackable, and cleanup source backups local.
+.shadcn-plus/operations/
+.shadcn-plus/plans/
+.shadcn-plus/*lock*
+
 # Coverage directory used by tools like istanbul
 coverage/
 *.lcov

@@ -34,6 +34,8 @@ export type { OperationReceipt, VerificationResult } from "./changes/transaction
 export type { Collection, CreateCollectionOptions } from "./collections/model.js";
 export type { CollectionList } from "./collections/files.js";
 export type { MigrationOptions, MigrationReport, MigrationIssue } from "./collections/migrate.js";
+export type { CheckOptions } from "./check/build.js";
+export type { CheckPolicy, CheckBaseline, CheckFinding, CheckReport } from "./check/model.js";
 
 // Keep importing the API and constructing/helping the CLI free of filesystem scans.
 export async function discoverProject(
@@ -117,4 +119,23 @@ export async function listCollections(directory:string):Promise<import("./collec
 }
 export async function migrateLegacyPresets(options:import("./collections/migrate.js").MigrationOptions={}):Promise<import("./collections/migrate.js").MigrationReport> {
   return (await import("./collections/migrate.js")).migrateLegacyPresets(options);
+}
+
+export async function checkProject(options:import("./check/build.js").CheckOptions={}):Promise<import("./check/model.js").CheckReport> {
+  return (await import("./check/build.js")).checkProject(options);
+}
+export async function createCheckBaseline(options:Omit<import("./check/build.js").CheckOptions,"baseline">={}):Promise<import("./check/model.js").CheckBaseline> {
+  return (await import("./check/build.js")).createCheckBaseline(options);
+}
+export async function parseCheckPolicy(value?:unknown):Promise<import("./check/model.js").CheckPolicy> {
+  return (await import("./check/model.js")).parseCheckPolicy(value);
+}
+export async function parseCheckBaseline(value:unknown):Promise<import("./check/model.js").CheckBaseline> {
+  return (await import("./check/model.js")).parseCheckBaseline(value);
+}
+export async function getAgentSkill():Promise<Awaited<ReturnType<typeof import("./agent/skill.js").getAgentSkill>>> {
+  return (await import("./agent/skill.js")).getAgentSkill();
+}
+export async function installAgentSkill(directory:string):Promise<Awaited<ReturnType<typeof import("./agent/skill.js").installAgentSkill>>> {
+  return (await import("./agent/skill.js")).installAgentSkill(directory);
 }

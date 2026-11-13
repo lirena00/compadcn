@@ -5,7 +5,8 @@ A CLI for installing and managing shadcn/ui components and presets, formerly nam
 V2 is under development. This checkout includes multi-registry search and
 installation, dependency graphs, read-only usage audits, exact cleanup plans,
 bounded plan application, conflict-aware recovery, and shareable component
-collections with explicit legacy preset migration.
+collections with explicit legacy preset migration, portable agent guidance, and
+CI policy checks with reviewed baselines.
 
 ## Features
 
@@ -14,6 +15,7 @@ collections with explicit legacy preset migration.
 - **Reviewed cleanup** - Preview exact changes and retain uncertain/shared resources
 - **Verification and recovery** - Apply checked plans with backups and conflict-aware restore
 - **Collections** - Share qualified component selections and explicitly migrate old presets
+- **Agents and CI** - Use compact results, reviewed baselines, and a bundled portable skill
 
 ## Local development
 
@@ -42,7 +44,7 @@ either `data` or `error`. Plain CLI errors go to stderr; JSON errors are returne
 as one structured response on stdout. Parser/runner errors return exit code `2`.
 
 Doctor, inventory, graph, audit, why, search, add, plan, apply, restore, operation,
-collection, help, version, and CLI errors support these output modes. Add requires explicit
+collection, check, agent, help, version, and CLI errors support these output modes. Add requires explicit
 addresses and `--yes` outside an interactive terminal. Apply and restore also
 require `--yes` outside an interactive terminal. Legacy lint/remove and preset workflows do not yet support
 `--json` or `--plain`; they return
@@ -54,7 +56,7 @@ validation, filesystem, and subprocess failures; cancellation remains a normal
 outcome. Legacy file cleanup is still non-transactional. Use the new plan/apply
 workflow for checked file deletion with backups and recovery.
 
-Inventory, graph, audit/why, search, add, plan, apply, restore, and collection migration/install share one task display. Progress is
+Inventory, graph, audit/why, search, add, plan, apply, restore, check, and collection migration/install share one task display. Progress is
 automatic in an interactive terminal; `--progress` opts into append-only stderr
 stages when output is plain or JSON, and `--no-progress` disables it. JSON stdout
 remains one envelope. Task stages include actual catalog status/cache results,
@@ -99,7 +101,7 @@ Doctor selects the nearest `package.json` from the chosen directory, stopping at
 the Git/worktree boundary. At a workspace root, select the intended app/package
 with `doctor --cwd`; it does not choose an app automatically. `--cwd` currently
 is available on `doctor`, `inventory`, `graph`, `audit`, `why`, `search`, `add`, and
-the `plan` subcommands, `apply`, `restore`, `operation`, and collection install/migration.
+the `plan` subcommands, `apply`, `restore`, `operation`, `check`, and collection install/migration.
 
 It reports the framework inferred from dependencies, conventional source folders,
 package manager and its metadata location, workspace members, compiler configs,
@@ -540,7 +542,9 @@ content comparison and path unlink one atomic operation. Network filesystem lock
 semantics are unsupported; see [Node's file-system flags documentation](https://nodejs.org/docs/latest-v22.x/api/fs.html#file-system-flags).
 Verification scripts can change other files or external state; those effects are
 not backed up or rolled back. Backups contain original source code and stay local;
-exclude `.shadcn-plus/` from version control. No retention cleanup runs automatically.
+exclude `.shadcn-plus/operations/`, `.shadcn-plus/plans/`, and runtime lock files
+from version control. Reviewable check policies/baselines can be tracked separately.
+No retention cleanup runs automatically.
 
 JSON success returns `data.operation`. Outcomes `rolled-back`, `precheck-failed`,
 and `recovery-required` exit `2`, using `CLEANUP_ROLLED_BACK`,
@@ -552,6 +556,124 @@ outcome instead of reporting that nothing happened. Plain failures use stderr;
 JSON stdout remains one response. Journals are versioned and limited to 16 MiB;
 saved plans are limited to 64 MiB. The lazy API exposes `applyCleanupPlan`,
 `inspectCleanupOperation`, and `restoreCleanupOperation`.
+
+### `shadcn-plus check`
+
+Run a read-only usage-policy gate using the same workspace audit and configured
+official/custom/private registries. Check never deletes files, runs project
+verification scripts, or treats a waiver as cleanup authorization.
+
+```bash
+shadcn-plus check --cwd apps/web --json
+shadcn-plus check --cwd apps/web --json --summary
+shadcn-plus check --cwd apps/web --policy .shadcn-plus/check-policy.json --json --limit 20
+```
+
+Policies are strict JSON with a version and rule levels. Unspecified rule levels
+use these defaults:
+
+```json
+{
+  "policyVersion": 1,
+  "rules": {
+    "unused-item": "error",
+    "unused-file": "error",
+    "unused-package": "warning",
+    "unknown-usage": "warning"
+  }
+}
+```
+
+`unused-item` reports observed registry item groups. `unused-file` reports unused
+unmapped files inside managed directories, avoiding duplicate reports for item
+files. `unused-package` reports audit package candidates. `unknown-usage` preserves
+uncertain item/unmapped-file findings for inspection. Each rule accepts `error`,
+`warning`, or `off`. Workspace consumers are always included. Incomplete analysis
+is independently blocking even when every rule is off.
+
+| Exit | Meaning |
+| --- | --- |
+| `0` | Complete analysis with no new error-level policy findings |
+| `1` | Complete analysis with new error-level findings (`CHECK_FAILED`) |
+| `2` | Incomplete/interrupted analysis, incompatible baseline, or invalid inputs |
+
+Success uses `data.check`; policy/coverage failures preserve the report under
+`error.details.check`. Check returns compact workspace-relative paths, counts,
+coverage, and at most 20 new findings by default. `--limit 0` or `--summary` hides
+details without changing the outcome. `--limit` accepts 0–200; per-finding paths,
+aliases, scopes, reasons, and diagnostics are also bounded with omission counts.
+Use each finding's `reference` with `why` for full evidence. Use `audit` if more
+diagnostics are needed. No token-saving percentage is assumed from compact output.
+
+### Reviewed check baselines
+
+```bash
+# Record current complete findings in a new artifact, then review it.
+shadcn-plus check baseline --cwd apps/web --policy .shadcn-plus/check-policy.json --out .shadcn-plus/check-baseline.json --json
+
+# Explicitly accept the reviewed findings while blocking new errors.
+shadcn-plus check --cwd apps/web --policy .shadcn-plus/check-policy.json --baseline .shadcn-plus/check-baseline.json --json
+```
+
+Baseline capture is an explicit review step. It records current findings, including
+errors, without fixing them. Passing `--baseline` accepts those findings for CI;
+do not regenerate it automatically to make a failed check green. Creation refuses
+incomplete analysis and never overwrites an existing file. Select a new filename
+when preparing an update, then review the change before replacing the tracked file.
+
+Baselines have strict versioned schemas, content IDs, and portable finding
+identities. They bind the selected package/workspace scopes, rule policy, tool and
+engine versions, entry patterns, analysis limits, and project/compiler/registry
+configuration. Changed context requires a newly reviewed artifact. Finding text
+normalizes checkout line endings/BOMs, while cleanup keeps exact-byte checks.
+Findings bind relative paths and evidence hashes, so changed unused item contents/manifests are
+reviewed again; unrelated source additions can be checked as new findings. Absolute
+checkout locations and credential-scoped cache IDs are excluded from waiver IDs.
+
+Use matching policy/entry/limit settings during capture and checking. Baselines
+can move between compatible checkouts; private-registry caches retain their own
+credential/workspace isolation. Populate the CI cache before relying on offline
+metadata. Baseline acceptance never suppresses coverage failures. Reports separate
+new errors/warnings, accepted findings, and resolved baseline entries.
+`--include-known` includes accepted findings in the bounded response.
+
+Check artifacts are limited to 16 MiB. Keep reviewable policies/baselines tracked
+while ignoring source backups, plans, and locks. The lazy API provides
+`checkProject`, `createCheckBaseline`, `parseCheckPolicy`, and `parseCheckBaseline`.
+
+### Agent skill and CI integration
+
+```bash
+# Read the bundled guide without scanning a project or contacting registries.
+shadcn-plus agent skill
+shadcn-plus agent skill --json
+
+# Explicitly install a new skill file for a compatible agent host.
+shadcn-plus agent skill --out .agents/skills/shadcn-plus --json
+```
+
+The bundled [Agent Skills](https://agentskills.io/specification) file lives at
+`skills/shadcn-plus/SKILL.md` in the repository and npm package. It guides agents
+through summary-first audits, focused explanations, exact plans, and recovery,
+while preserving the user's existing authorization. It also explains CI exit codes
+and why a baseline does not grant cleanup permission. Skill installation creates
+only the requested `SKILL.md`; it does not replace existing skills, `AGENTS.md`,
+editor settings, or personal configuration. Agent-host discovery locations vary;
+choose the path your host supports. The lazy API exposes `getAgentSkill` and
+`installAgentSkill`.
+
+The [consumer workflow](examples/ci/shadcn-plus.yml) and
+[policy example](examples/ci/check-policy.json) are also included in the npm
+package. Use a pinned tool dependency, install the project's lockfile, then run
+`pnpm exec shadcn-plus check` with explicit `--cwd`, policy, and reviewed baseline.
+Supply the environment variables required by private registries through the CI
+credential mechanism. Missing credentials remain incomplete coverage, rather than
+a successful empty result. Keep the command's exit status intact.
+
+The repository CI runs type checking, existing behavioral tests, and a package
+dry run on Node 24. Its workflow uses SHA-pinned actions and read-only repository
+permissions; it has no publication or release step. Full compatibility-matrix
+verification remains part of release readiness.
 
 ### `shadcn-plus search [query]`
 

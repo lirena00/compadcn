@@ -1,0 +1,34 @@
+# Copy into the consuming project's .github/workflows directory. Keep a pinned
+# shadcn-plus dependency in its lockfile, and review/commit policy + baseline.
+name: Component policy
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  components:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+        with:
+          version: 10.13.1
+          run_install: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # Set registry environment variables required by components.json through
+      # your CI credential mechanism. Missing credentials remain exit 2.
+      - run: >-
+          pnpm exec shadcn-plus check --cwd apps/web
+          --policy .shadcn-plus/check-policy.json
+          --baseline .shadcn-plus/check-baseline.json
+          --json --no-interactive --limit 20

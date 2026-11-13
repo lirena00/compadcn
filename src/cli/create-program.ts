@@ -35,6 +35,7 @@ export function createProgram(options: ProgramOptions = {}): Command {
     if (command === planCommand || command.parent === planCommand) return;
     if (command === applyCommand || command === restoreCommand || command === operationCommand) return;
     if (command === collectionCommand || command.parent === collectionCommand) return;
+    if (command === checkCommand || command.parent === checkCommand || command === agentCommand || command.parent === agentCommand) return;
     if (command === addCommand) {
       const settings=command.opts();
       if ((!process.stdin.isTTY || !process.stdout.isTTY || outputOptions.interactive===false || outputOptions.json || outputOptions.plain || process.env.TERM==="dumb") && (!settings.yes || !command.args.length)) throw new CliError("INTERACTIVE_REQUIRED","Use explicit component addresses with --yes for noninteractive add.");
@@ -45,7 +46,7 @@ export function createProgram(options: ProgramOptions = {}): Command {
       throw new CliError(
         "OUTPUT_MODE_UNSUPPORTED",
         "This legacy workflow does not support --json or --plain yet. " +
-          "Doctor, inventory, graph, audit, why, search, add, plan, apply, restore, operation, collection, help, and version output support both modes."
+          "Doctor, inventory, graph, audit, why, search, add, plan, apply, restore, operation, collection, check, agent, help, and version output support both modes."
       );
     }
 
@@ -257,6 +258,23 @@ export function createProgram(options: ProgramOptions = {}): Command {
     .option("--timeout <milliseconds>", "Timeout per registry request attempt (maximum 60000)", "10000")
     .action(async options => { const { runCollectionMigration } = await import("./collection.js"); await runCollectionMigration(options, program.opts<OutputOptions>()); });
 
+  const checkCommand = configureCheckCommand(program.command("check").description("Read-only CI policy check; exit 1 for new violations, 2 for incomplete coverage"))
+    .option("--baseline <path>", "Reviewed versioned baseline JSON for accepted findings")
+    .action(async options => { const { runCheck } = await import("./check.js"); await runCheck(options, program.opts<OutputOptions>()); });
+  configureCheckCommand(checkCommand.command("baseline").description("Record current complete findings for review without fixing or deleting them"))
+    .requiredOption("--out <path>", "Create a new baseline JSON file without overwriting")
+    .action(async (options, command) => {
+      const settings = { ...options };
+      for (const [key, value] of Object.entries(checkCommand.opts())) if (checkCommand.getOptionValueSource(key) === "cli" && command.getOptionValueSource(key) !== "cli") settings[key] = value;
+      if (settings.baseline) throw new CliError("INVALID_OPTIONS", "Baseline capture records current findings; omit --baseline and review the new --out artifact.");
+      const { runCheck } = await import("./check.js"); await runCheck(settings, program.opts<OutputOptions>(), true);
+    });
+
+  const agentCommand = program.command("agent").description("Read or explicitly install the bundled portable agent skill").action(() => agentCommand.help());
+  agentCommand.command("skill").description("Print the skill, or copy it to an explicit directory without overwriting")
+    .option("--out <directory>", "Create SKILL.md in this directory (for example .agents/skills/shadcn-plus)")
+    .action(async options => { const { runAgentSkill } = await import("./agent.js"); await runAgentSkill(options, program.opts<OutputOptions>()); });
+
   const presetCommand = program
     .command("preset")
     .alias("p")
@@ -382,4 +400,12 @@ function configurePlanningCommand(command:Command):Command {
     .option("--summary","Omit operation diffs and input-file lists from terminal/JSON output")
     .option("--max-input-files <number>","Complete-scope fingerprint file limit (1-100000)","50000")
     .option("--max-input-bytes <number>","Complete-scope fingerprint byte limit (maximum 1073741824)","268435456");
+}
+
+function configureCheckCommand(command: Command): Command {
+  return configureAuditCommand(command)
+    .option("--policy <path>", "Strict versioned JSON policy; no executable configuration")
+    .option("--summary", "Return counts and coverage without finding details")
+    .option("--limit <number>", "Maximum findings in this response (0-200; all findings still affect policy)", "20")
+    .option("--include-known", "Include accepted baseline findings in the bounded response");
 }
