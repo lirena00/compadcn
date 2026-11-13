@@ -1,7 +1,7 @@
 {
   "name": "shadcn-plus",
   "version": "2.0.0",
-  "description": "CLI for installing and managing shadcn/ui components and presets",
+  "description": "Inventory, audit, and safely manage components across shadcn registries",
   "type": "module",
   "main": "./dist/index.js",
   "bin": {
@@ -9,12 +9,13 @@
   },
   "exports": {
     ".": {
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
     }
   },
   "files": [
     "dist/**/*",
+    "docs/compatibility.md",
     "skills/shadcn-plus/SKILL.md",
     "examples/ci/*"
   ],
@@ -24,9 +25,12 @@
     "dev:watch": "tsx watch src/cli.ts",
     "typecheck": "tsc --noEmit",
     "clean": "rimraf dist",
-    "prepublishOnly": "pnpm run clean && pnpm run build",
+    "prepack": "pnpm run clean && pnpm run build",
     "link-cli": "pnpm run build && pnpm unlink --global && pnpm link --global",
-    "test": "pnpm run build && node --test"
+    "test": "pnpm run build && node --test",
+    "verify:package": "node scripts/verify-package.mjs",
+    "verify:frameworks": "pnpm run build && node scripts/verify-frameworks.mjs",
+    "benchmark": "pnpm run build && node scripts/benchmark.mjs"
   },
   "keywords": [
     "cli",

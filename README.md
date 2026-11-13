@@ -1,6 +1,7 @@
 # shadcn-plus
 
-A CLI for installing and managing shadcn/ui components and presets, formerly named compadcn.
+A CLI for inventorying, auditing, and safely managing components across shadcn
+registries, formerly named compadcn.
 
 V2 is under development. This checkout includes multi-registry search and
 installation, dependency graphs, read-only usage audits, exact cleanup plans,
@@ -931,6 +932,10 @@ External installers inherit terminal input and output so their prompts
 and diagnostics remain visible. Configure `tailwind.cssVariables` in
 `components.json`; the old add-time CSS-variable flags are not accepted by
 upstream `shadcn add` and are no longer exposed.
+
+See [compatibility and reproducible verification](docs/compatibility.md) for the
+tested framework corpus, platform/Node matrix, package smoke checks, benchmarks,
+and their limits.
 
 ## How It Works
 
