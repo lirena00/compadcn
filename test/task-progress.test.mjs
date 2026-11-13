@@ -59,3 +59,17 @@ test("interrupting an in-flight CLI request returns cancellation and removes sig
   assert.equal(stderr,"");
   assert.deepEqual(listeners.after,listeners.before);
 });
+
+test("interactive task display cancels without importing Clack or capturing terminal input",async(t)=>{
+  let requested;const requestStarted=new Promise((resolve)=>{requested=resolve;});
+  const {root}=await fixture(t,()=>requested());
+  const script=fileURLToPath(new URL("../fixtures/cli/cancellable-command.mjs",import.meta.url));
+  const blocker=new URL("../fixtures/cli/register-block-workflows.mjs",import.meta.url).href;
+  const child=fork(script,["inventory","--no-cache"],{cwd:root,execArgv:["--import",blocker],env:{...process.env,SHADCN_PLUS_SIMULATE_TASK_TTY:"1"},stdio:["ignore","pipe","pipe","ipc"]});
+  let stdout="",stderr="";child.stdout.on("data",(chunk)=>{stdout+=chunk;});child.stderr.on("data",(chunk)=>{stderr+=chunk;});
+  const exited=new Promise((resolve,reject)=>{child.once("error",reject);child.once("close",(code)=>resolve(code));});
+  t.after(()=>{if(child.exitCode===null)child.kill();});
+  await Promise.race([requestStarted,new Promise((_,reject)=>{const timer=setTimeout(()=>reject(new Error("Task did not request catalog")),10000);timer.unref();})]);
+  child.send("cancel");assert.equal(await exited,0,stderr);
+  assert.equal(stdout,"Operation cancelled.\n");assert.match(stderr,/CANCELLED: Cancelled/);
+});

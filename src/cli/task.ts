@@ -4,6 +4,7 @@ import { CommandCancelled } from "../core/cancellation.js";
 import type { TaskEvent } from "../core/progress.js";
 import { getOutputMode, type OutputOptions } from "./output.js";
 import { terminalText } from "./text.js";
+import { createTaskDisplay } from "./task-display.js";
 
 export interface TaskContext {
   signal: AbortSignal;
@@ -18,9 +19,9 @@ export async function runTask<T>(title: string, options: OutputOptions, operatio
   const mode = getOutputMode(options);
   const visible = options.progress ?? mode === "interactive";
   const animated = visible && mode === "interactive" && !!process.stderr.isTTY && !["1","true"].includes(process.env.ACCESSIBLE ?? "");
-  let display: ReturnType<typeof import("@clack/prompts")["spinner"]> | undefined;
+  let display: ReturnType<typeof createTaskDisplay> | undefined;
+  const initialRawMode=process.stdin.isRaw;
   let started = false, mutating = false;
-  let lastPaint = 0;
   const began = performance.now();
   const active = new Map<string, string>();
   const completed = new Set<string>();
@@ -30,8 +31,7 @@ export async function runTask<T>(title: string, options: OutputOptions, operatio
   process.on("SIGTERM", abort);
   try {
     if (animated) {
-      const { spinner } = await import("@clack/prompts");
-      display = spinner({ output: process.stderr, indicator: "timer", onCancel: abort });
+      display = createTaskDisplay(process.stderr,elapsed);
     }
     const onProgress = (event: TaskEvent) => {
       if (!visible || controller.signal.aborted) return;
@@ -45,8 +45,9 @@ export async function runTask<T>(title: string, options: OutputOptions, operatio
       message = terminalText(message, Math.max(24, Math.min(process.stderr.columns ?? 100, 160) - 8));
       if (display) {
         if (!started) { display.start(message); started = true; }
-        else if (performance.now() - lastPaint >= 100 || event.state === "complete") display.message(message);
-        lastPaint = performance.now();
+        // The display coalesces changes into its bounded repaint interval.
+        // Always keep the latest stage/source so a quiet slow task is visible.
+        else display.message(message);
       } else if (!event.source || event.state === "complete") {
         process.stderr.write(`[${elapsed()}] ${event.stage} ${event.state}: ${message}\n`);
       }
@@ -71,6 +72,8 @@ export async function runTask<T>(title: string, options: OutputOptions, operatio
     if (started) display?.error(`${title} failed (${elapsed()})`);
     throw error;
   } finally {
+    display?.clear();
+    if(process.stdin.isTTY&&process.stdin.isRaw!==initialRawMode)process.stdin.setRawMode(initialRawMode ?? false);
     process.removeListener("SIGINT", abort);
     process.removeListener("SIGTERM", abort);
   }

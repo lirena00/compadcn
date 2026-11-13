@@ -4,6 +4,7 @@ import { CliError } from "../core/errors.js";
 import { CommandCancelled } from "../core/cancellation.js";
 import { discoverProject } from "../project/discover.js";
 import { createInventorySession, makeItem } from "../inventory/build.js";
+import { mapLimit } from "../registry/client.js";
 import { mapFile } from "../inventory/files.js";
 import type { InventoryItem } from "../inventory/types.js";
 import { catalogEntries, validateCatalogFilters, type CatalogFilters } from "../catalog/model.js";
@@ -68,8 +69,8 @@ export async function runAdd(components:string[],options:AddCliOptions,outputOpt
     if(!selected.length)throw new CommandCancelled("No components selected. Installation was not started.");
     // Load only selected manifests; request deduplication and the existing cache
     // remain in this session. Never refetch catalogs in response to a query.
-    const details:InventoryItem[]=[];
-    for(const item of selected) {
+    task.onProgress({stage:"registry",state:"start",message:`Reading ${selected.length} selected component manifests`,completed:0,total:selected.length});
+    const details=await mapLimit(selected,Number(options.concurrency),async(item)=>{
       const source=session.sources.find(({descriptor})=>descriptor.id===item.sourceId)!;
       const fetched=await session.client.fetch(source,item.name,"item");
       if(fetched.cache==="stale-cache"||fetched.diagnostic?.severity==="error")throw new CliError("INSTALL_METADATA_INCOMPLETE","Selected component metadata is stale or incomplete. Refresh its registry before installation.");
@@ -77,15 +78,17 @@ export async function runAdd(components:string[],options:AddCliOptions,outputOpt
       if(!installableTypes.has(remote.type)||!remote.files.length)throw new CliError("INSTALL_TYPE_UNSUPPORTED","The component picker installs file-based registry items. Style/theme/base-only operations require their upstream workflow.");
       const detail=makeItem(remote,source,context,item.inCatalog,"fetched");
       if(detail.diagnostics.some(({severity})=>severity==="error")||detail.mappedFiles.some(({path})=>!path))throw new CliError("INSTALL_DESTINATION_UNSUPPORTED","The selected manifest has unresolved destinations. Inspect inventory diagnostics before installing.",{item:detail.qualifiedName,diagnostics:detail.diagnostics});
-      details.push(detail);
-    }
+      return detail;
+    });
+    task.onProgress({stage:"registry",state:"complete",message:`Read ${details.length} selected component manifests`,completed:details.length,total:details.length});
     const skipped=options.overwrite?[]:details.filter(({presence})=>presence==="present").map(({qualifiedName})=>qualifiedName);
     const pending=details.filter(({presence})=>options.overwrite||presence!=="present");
     if(!pending.length)return {projectRoot:context.projectRoot,requested:details.map(({qualifiedName})=>qualifiedName),installed:[] as string[],skipped,verifiedFiles:0,sharedEffects:0};
+    task.pause();
     if(mode==="interactive"&&!options.yes) {
       const {note,confirm,isCancel}=await import("@clack/prompts");
       note(pending.map((item)=>`${terminalText(item.qualifiedName)}: ${item.mappedFiles.length} files; ${item.presence}${item.resources?.length?`; ${item.resources.length} shared effects`:""}`).join("\n"),`Review ${pending.length} selected items${options.overwrite?" (overwrite enabled)":""}`);
-      note(`Installer: shadcn@4.23.0 via ${context.packageManager.name}\nProject: ${terminalText(context.projectRoot,300)}\nUpstream may install dependencies and update shared configuration. Existing files are ${options.overwrite?"eligible for overwrite":"kept by upstream"}.`);
+      note(`Installer: shadcn@4.23.0 via ${context.packageManager.name}\nProject: ${terminalText(context.projectRoot,300)}\nUpstream may install dependencies and update shared configuration. Existing-file overwrite is ${options.overwrite?"enabled":"not requested"}.`);
       const answer=await confirm({message:"Install these selected components?",initialValue:false,signal:task.signal});
       if(isCancel(answer)||!answer)throw new CommandCancelled();
     }
