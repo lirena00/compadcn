@@ -6,6 +6,7 @@ import { digest } from "../core/hash.js";
 import { CliError } from "../core/errors.js";
 import type { CleanupPlan } from "../changes/schema.js";
 import type { VerificationResult } from "../changes/transaction-types.js";
+import { stopWindowsVerification } from "./stop-windows.js";
 
 export interface VerificationOptions { cwd: string; signal?: AbortSignal; env?: NodeJS.ProcessEnv; verificationTimeoutMs?: number }
 
@@ -24,14 +25,16 @@ export async function runVerification(step: CleanupPlan["verification"][number],
   const scripts = manifest.scripts as Record<string, unknown> | undefined;
   if (typeof scripts?.[step.script] !== "string" || digest(scripts[step.script] as string) !== step.scriptHash) throw new CliError("VERIFICATION_CONFIGURATION_CHANGED", "A verification script changed after planning.");
   let timedOut = false, cancelled = false, termination: Promise<unknown> | undefined;
+  let terminationConfirmed = true;
+  const launched = Date.now();
   const child = execa(step.command, step.args, { cwd: options.cwd, env: { ...process.env, ...options.env, CI: "1", NO_COLOR: "1" },
     stdio: "ignore", reject: false, detached: process.platform !== "win32", windowsHide: true });
   const stop = () => {
     if (termination || !child.pid) return;
-    if (process.platform === "win32") termination = execa(join(process.env.SystemRoot ?? "C:\\Windows", "System32", "taskkill.exe"), ["/pid", String(child.pid), "/t", "/f"], { reject: false, stdio: "ignore", windowsHide: true }).then(() => { child.kill(); });
+    if (process.platform === "win32") termination = stopWindowsVerification(child.pid, launched).then(confirmed => { terminationConfirmed = confirmed; child.kill(); });
     else {
       try { process.kill(-child.pid, "SIGTERM"); } catch { child.kill(); }
-      termination = new Promise<void>((done) => { setTimeout(() => { try { process.kill(-child.pid!, "SIGKILL"); } catch { /* The group already exited. */ } done(); }, 1000); });
+      termination = new Promise<void>((done) => { setTimeout(() => { try { process.kill(-child.pid!, "SIGKILL"); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") terminationConfirmed = false; } done(); }, 1000); });
     }
   };
   const abort = () => { cancelled = true; stop(); };
@@ -41,6 +44,7 @@ export async function runVerification(step: CleanupPlan["verification"][number],
   if (options.signal?.aborted) abort();
   try {
     const execution = await child; await termination;
+    if (!terminationConfirmed) throw new CliError("VERIFICATION_TERMINATION_UNCONFIRMED", `The ${step.script} verification process tree could not be confirmed stopped. Stop its remaining processes before restoring this operation.`);
     return result(timedOut ? "timeout" : cancelled ? "cancelled" : execution.failed || execution.exitCode !== 0 ? "failed" : "passed", execution.exitCode ?? null);
   } finally { clearTimeout(timeout); options.signal?.removeEventListener("abort", abort); }
 }

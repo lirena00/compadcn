@@ -6,7 +6,7 @@ import type { Diagnostic, ProjectContext } from "../project/types.js";
 import { canonicalJSON, digest } from "../core/hash.js";
 import { reportProgress } from "../core/progress.js";
 import { takeScopeSnapshot, snapshotChanges, type SnapshotOptions } from "./snapshot.js";
-import { ignoredDirectories, localPath } from "./paths.js";
+import { ignoredDirectories, ignoredInputFile, localPath } from "./paths.js";
 import { validateAnalysisOptions } from "../analysis/options.js";
 import { validateSnapshotOptions } from "./snapshot.js";
 import { CliError } from "../core/errors.js";
@@ -47,7 +47,7 @@ export async function beginPlanning(options: PlanningOptions, savedExclusions?: 
   const indexed = new Map(inputs.files.map((file)=>[file.path,file]));
   for (const node of session.graph.nodes) if(node.kind==="file"&&node.path) {
     const path = localOutside(root,node.path) ? undefined : localPath(root,node.path);
-    if (!path || path.split("/").some((part)=>ignoredDirectories.has(part))) diagnostics.push({code:"PLAN_INPUT_EXCLUDED",severity:"error",message:"An analyzed reference depends on an excluded input directory.",...(path?{path}:{})});
+    if (!path || path.split("/").some((part)=>ignoredDirectories.has(part)) || ignoredInputFile(path.split("/").at(-1)!)) diagnostics.push({code:"PLAN_INPUT_EXCLUDED",severity:"error",message:"An analyzed reference depends on an excluded generated input.",...(path?{path}:{})});
     else if(node.contentHash && indexed.get(path)?.sha256!==node.contentHash)diagnostics.push({code:"PLAN_INPUT_CHANGED",severity:"error",message:"Analyzed bytes do not match the initial input snapshot.",path});
   }
   return {session,inputs,configuration,diagnostics,options,index:{inputs:indexed,files:new Map(session.report.files.map((file)=>[file.id,file])),nodes:new Map(session.graph.nodes.map((node)=>[node.id,node]))},complete:inputs.complete&&session.report.complete&&!diagnostics.some(({severity})=>severity==="error")};

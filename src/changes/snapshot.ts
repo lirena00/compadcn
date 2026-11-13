@@ -6,7 +6,7 @@ import { canonicalJSON, digest } from "../core/hash.js";
 import { CliError } from "../core/errors.js";
 import { canonicalPath, isWithin } from "../project/files.js";
 import type { Diagnostic } from "../project/types.js";
-import { ignoredDirectories, localPath, portablePath } from "./paths.js";
+import { ignoredDirectories, ignoredInputFile, localPath, portablePath } from "./paths.js";
 import type { ScopeFile, ScopeSnapshot } from "./schema.js";
 
 export interface SnapshotOptions { signal?: AbortSignal; excludedArtifacts?: string[]; maxInputFiles?: number; maxInputBytes?: number }
@@ -32,7 +32,7 @@ export async function takeScopeSnapshot(root: string, options: SnapshotOptions =
     try {
       if (!isWithin(root, canonicalPath(directory))) throw new Error("Outside scope");
       for (const entry of (await readdir(directory, { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name))) {
-        if (ignoredDirectories.has(entry.name)) continue;
+        if (ignoredDirectories.has(entry.name) || (!entry.isDirectory() && ignoredInputFile(entry.name))) continue;
         const absolute = join(directory, entry.name), path = localPath(root, absolute);
         if (excludedArtifacts.includes(path)) continue;
         if (entry.isDirectory()) { pending.push(absolute); continue; }

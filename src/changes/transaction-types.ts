@@ -5,7 +5,7 @@ import type { CleanupPlan } from "./schema.js";
 
 export const operationIdSchema = z.string().uuid();
 const index = z.number().int().min(0).max(1999), hash = z.string().regex(/^[a-f0-9]{64}$/);
-export const phaseSchema = z.enum(["preparing", "prepared", "applying", "verifying", "restoring", "completed", "rolled-back", "restored", "recovery-required", "precheck-failed"]);
+export const phaseSchema = z.enum(["preparing", "prepared", "applying", "verifying", "restoring", "completed", "rolled-back", "restored", "recovery-required", "precheck-failed", "rejected", "cancelled"]);
 export const verificationResultSchema = z.strictObject({
   phase: z.enum(["before", "after"]), script: z.string().min(1).max(4096),
   status: z.enum(["passed", "failed", "timeout", "cancelled", "not-configured", "not-run"]),
@@ -29,7 +29,7 @@ export type JournalEvent = z.infer<typeof journalEventSchema>;
 export interface OperationReceipt {
   operationVersion: 1; operationId: string; planId: string; project: CleanupPlan["project"];
   status: z.infer<typeof phaseSchema> | "interrupted"; journalPath: string;
-  changedPaths: string[]; restoredPaths: string[]; conflicts: { path: string; code: string }[];
+  plannedPaths: string[]; attemptedPaths: string[]; changedPaths: string[]; restoredPaths: string[]; conflicts: { path: string; code: string }[];
   verification: VerificationResult[]; diagnostics: { code: string; message: string }[]; complete: boolean;
 }
 

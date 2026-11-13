@@ -50,11 +50,13 @@ export async function applyCleanupPlan(input: unknown, options: ApplyOptions = {
   const operationId = randomUUID(), lock = acquireCleanupLock(root, operationId);
   let journal: OperationJournal | undefined;
   try {
+    // Persist the operation identity before awaiting registry/analysis work, so
+    // an interrupted validation also has a journal its lock can point to.
+    journal = createOperationJournal(root, operationId, plan);
     const checked = await checkCleanupPlan(plan, options);
     if (options.signal?.aborted) throw new CommandCancelled();
     if (!checked.valid || !checked.ready) throw new CliError("PLAN_STALE", "Current analysis could not re-establish this exact plan. Create a new plan before applying.", { check: checked });
     lock.assert();
-    journal = createOperationJournal(root, operationId, plan);
     for (const [index, operation] of plan.operations.entries()) {
       lock.assert();
       const { bytes, stat } = readTarget(root, operation);
@@ -89,10 +91,21 @@ export async function applyCleanupPlan(input: unknown, options: ApplyOptions = {
     journal.append({ type: "phase", value: "completed" }); return journal.receipt();
   } catch (error) {
     if (!journal) throw error;
+    const deletionStarted = journal.events.some(({ body }) => body.type === "delete-intent");
+    if (!deletionStarted && (options.signal?.aborted || error instanceof CommandCancelled || (error instanceof CliError && error.code === "PLAN_STALE"))) {
+      lock.assert();
+      const cancelled = options.signal?.aborted || error instanceof CommandCancelled;
+      journal.append({ type: "failure", code: cancelled ? "CLEANUP_CANCELLED" : "PLAN_STALE", message: cancelled ? "Cleanup was cancelled before deletion." : (error as CliError).message });
+      journal.append({ type: "phase", value: cancelled ? "cancelled" : "rejected" });
+      if (cancelled) throw new CommandCancelled(`Cancelled before deletion. Operation: ${operationId}.`);
+      const failure = error as CliError;
+      throw new CliError("PLAN_STALE", failure.message, { ...failure.details, operation: journal.receipt() });
+    }
     const code = error instanceof CliError ? error.code : "CLEANUP_FAILED";
     try {
       lock.assert();
       journal.append({ type: "failure", code, message: error instanceof CliError ? error.message : "Cleanup stopped after an operation or filesystem failure." });
+      if (code === "VERIFICATION_TERMINATION_UNCONFIRMED") { journal.append({ type: "phase", value: "recovery-required" }); return journal.receipt(); }
       return restoreJournal(journal, lock, options, true);
     } catch {
       return { ...journal.receipt(), status: "recovery-required", complete: false, diagnostics: [...journal.receipt().diagnostics, { code: "RECOVERY_REQUIRED", message: "Automatic recovery could not finish. Preserve the operation directory and inspect/restore this operation." }] };

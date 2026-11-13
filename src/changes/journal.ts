@@ -16,7 +16,11 @@ export interface CleanupLock { assert(): void; release(): void }
 export function acquireCleanupLock(root: string, operationId: string, recover = false): CleanupLock {
   const state = stateDirectory(root), path = join(state, "cleanup.lock"), gate = join(state, "cleanup-recovery.lock");
   const owner = { token: randomUUID(), operationId, pid: process.pid, host: hostname(), createdAt: new Date().toISOString() };
-  const blocked = () => new CliError("CLEANUP_LOCKED", "Another cleanup owns the workspace lock. Inspect its operation; use restore --recover-lock only after its process has stopped.");
+  const blocked = () => {
+    let details: Record<string, unknown> | undefined;
+    try { const previous = lockSchema.parse(JSON.parse(readStateFile(path, 16384).toString("utf8"))); details = { operationId: previous.operationId, processId: previous.pid, host: previous.host }; } catch { /* A malformed lock requires inspection, not takeover. */ }
+    return new CliError("CLEANUP_LOCKED", `Workspace cleanup is locked${details ? ` by operation ${details.operationId}` : ""}. Inspect its operation; use restore --recover-lock only after its process has stopped.`, details);
+  };
   try { lstatSync(gate); throw blocked(); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
   const create = () => { try { writeExclusive(path, JSON.stringify(owner)); } catch (error) { if ((error as NodeJS.ErrnoException).code === "EEXIST") throw blocked(); throw error; } };
   if (recover) {
@@ -81,20 +85,24 @@ export class OperationJournal {
     }
     return { operationVersion: 1, operationId: this.operationId, planId: this.plan.id, project: this.plan.project,
       status: ["preparing", "prepared", "applying", "verifying", "restoring"].includes(phase) ? "interrupted" : phase,
-      journalPath: this.path, changedPaths: [...changed].map(index => this.plan.operations[index]!.path), restoredPaths: [...restored].map(index => this.plan.operations[index]!.path),
+      journalPath: this.path, plannedPaths: this.plan.operations.map(operation=>operation.path),
+      attemptedPaths: [...new Set(this.events.flatMap(({body})=>body.type==="delete-intent"?[body.index]:[]))].map(index=>this.plan.operations[index]!.path),
+      changedPaths: [...changed].map(index => this.plan.operations[index]!.path), restoredPaths: [...restored].map(index => this.plan.operations[index]!.path),
       conflicts: [...conflicts].map(([index, code]) => ({ path: this.plan.operations[index]!.path, code })),
       verification: this.events.flatMap(({ body }) => body.type === "verification" ? [body.result] : []),
       diagnostics: [...this.events.flatMap(({ body }) => body.type === "failure" ? [{ code: body.code, message: body.message }] : []), ...(this.truncated ? [{ code: "JOURNAL_TRUNCATED", message: "An interrupted final journal record was ignored; recovery preserves its bytes." }] : [])],
-      complete: ["completed", "rolled-back", "restored", "precheck-failed"].includes(phase) && !conflicts.size && !this.truncated };
+      complete: ["completed", "rolled-back", "restored", "precheck-failed", "rejected", "cancelled"].includes(phase) && !conflicts.size && !this.truncated };
   }
 }
 
 export function createOperationJournal(root: string, operationId: string, plan: CleanupPlan): OperationJournal {
+  const savedPlan = JSON.stringify(plan) + "\n";
+  if (Buffer.byteLength(savedPlan) > 64 * 1024 * 1024) throw new CliError("PLAN_ARTIFACT_INVALID", "The operation's saved plan exceeds its recovery size limit.");
   stateDirectory(root); const operations = ordinaryPath(root, ".shadcn-plus/operations");
   mkdirSync(operations, { recursive: true, mode: 0o700 });
   const directory = ordinaryPath(root, `.shadcn-plus/operations/${operationId}`);
   mkdirSync(directory, { mode: 0o700 }); mkdirSync(join(directory, "backups"), { mode: 0o700 });
-  writeExclusive(join(directory, "plan.json"), JSON.stringify(plan) + "\n");
+  writeExclusive(join(directory, "plan.json"), savedPlan);
   writeExclusive(join(directory, "journal.jsonl"), "");
   const journal = new OperationJournal(root, directory, operationId, plan, [], 0);
   journal.append({ type: "started", operationId, planId: plan.id, createdAt: new Date().toISOString() });

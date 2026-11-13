@@ -1,6 +1,5 @@
 import { constants, closeSync, fchmodSync, fstatSync, fsyncSync, futimesSync, linkSync, lstatSync, mkdirSync, openSync, readSync, unlinkSync, writeFileSync, type Stats } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { randomUUID } from "node:crypto";
 import { canonicalPath, isWithin } from "../project/files.js";
 import { digest } from "../core/hash.js";
 import { CliError } from "../core/errors.js";
@@ -28,14 +27,14 @@ export function writeExclusive(path: string, bytes: string | Buffer, mode = 0o60
   try { writeFileSync(fd, bytes); fsyncSync(fd); } finally { closeSync(fd); }
 }
 
-export function readOrdinary(path: string, maxBytes: number): { bytes: Buffer; stat: Stats } {
+export function readOrdinary(path: string, maxBytes: number, expectedLinks = 1): { bytes: Buffer; stat: Stats } {
   if (canonicalPath(path) !== resolve(path)) throw new CliError("CLEANUP_LINK_UNSUPPORTED", "Refusing a linked cleanup file.");
   const before = lstatSync(path);
-  if (!before.isFile() || before.isSymbolicLink() || before.nlink !== 1 || before.size > maxBytes) throw new CliError("CLEANUP_FILE_UNSUPPORTED", "Cleanup requires bounded ordinary files with one hard link.");
+  if (!before.isFile() || before.isSymbolicLink() || before.nlink !== expectedLinks || before.size > maxBytes) throw new CliError("CLEANUP_FILE_UNSUPPORTED", "Cleanup requires a bounded ordinary file with its expected link count.");
   const fd = openSync(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
   try {
     const stat = fstatSync(fd);
-    if (!stat.isFile() || stat.ino !== before.ino || stat.dev !== before.dev || stat.nlink !== 1 || stat.size > maxBytes) throw new CliError("CLEANUP_FILE_CHANGED", "File identity changed while opening it.");
+    if (!stat.isFile() || stat.ino !== before.ino || stat.dev !== before.dev || stat.nlink !== expectedLinks || stat.size > maxBytes) throw new CliError("CLEANUP_FILE_CHANGED", "File identity changed while opening it.");
     const bytes = Buffer.alloc(stat.size); let offset = 0;
     while (offset < bytes.length) { const size = readSync(fd, bytes, offset, bytes.length - offset, null); if (!size) break; offset += size; }
     const after = fstatSync(fd), current = lstatSync(path);
@@ -56,10 +55,19 @@ export function removeTarget(root: string, operation: CleanupOperation): void {
   unlinkSync(value.path);
 }
 
-export function restoreExclusive(root: string, operation: CleanupOperation, bytes: Buffer, times: { atimeMs: number; mtimeMs: number }): "created" | "already-original" {
+export function restoreExclusive(root: string, operation: CleanupOperation, bytes: Buffer, times: { atimeMs: number; mtimeMs: number }, stagingId: string): "created" | "already-original" {
+  if (!/^[a-f0-9-]{36}-\d{1,4}$/i.test(stagingId)) throw new CliError("RESTORE_STAGING_INVALID", "Recovery staging must belong to an operation and index.");
   const target = ordinaryPath(root, operation.path);
+  const temporary = join(dirname(target), `.shadcn-plus-restore-${stagingId}.tmp`);
+  const matches = (value: { bytes: Buffer; stat: Stats }) => digest(value.bytes) === operation.before.sha256 && value.bytes.length === operation.before.bytes && (value.stat.mode & 0o777) === operation.before.mode;
   try {
-    lstatSync(target);
+    const stat = lstatSync(target);
+    // A process may have stopped after linking a complete staging file but
+    // before removing its extra name. Finish that exact step without rewriting.
+    if (stat.nlink === 2) {
+      const staged = lstatSync(temporary);
+      if (staged.ino === stat.ino && staged.dev === stat.dev && matches(readOrdinary(temporary, 2 * 1024 * 1024, 2))) unlinkSync(temporary);
+    }
     readTarget(root, operation);
     return "already-original";
   } catch (error) {
@@ -67,17 +75,27 @@ export function restoreExclusive(root: string, operation: CleanupOperation, byte
   }
   const parent = dirname(target);
   if (!isWithin(root, parent) || canonicalPath(parent) !== parent || !lstatSync(parent).isDirectory()) throw new CliError("RESTORE_PARENT_CHANGED", "The original parent directory is missing or linked.", { path: operation.path });
-  const temporary = join(parent, `.shadcn-plus-restore-${randomUUID()}.tmp`);
-  const fd = openSync(temporary, "wx", 0o600);
+  let staged = false;
   try {
-    writeFileSync(fd, bytes); fchmodSync(fd, operation.before.mode);
-    futimesSync(fd, times.atimeMs / 1000, times.mtimeMs / 1000); fsyncSync(fd);
-  } finally { closeSync(fd); }
-  try {
+    try {
+      const value = readOrdinary(temporary, 2 * 1024 * 1024);
+      if (!matches(value)) throw new CliError("RESTORE_STAGING_CONFLICT", "An interrupted recovery staging file differs; preserve and inspect it before retrying.");
+      staged = true;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      const fd = openSync(temporary, "wx", 0o600);
+      try {
+        writeFileSync(fd, bytes); fchmodSync(fd, operation.before.mode);
+        futimesSync(fd, times.atimeMs / 1000, times.mtimeMs / 1000); fsyncSync(fd); staged = true;
+      } finally { closeSync(fd); }
+    }
     ordinaryPath(root, operation.path);
     // link is exclusive: a concurrently recreated target is never overwritten.
     linkSync(temporary, target);
-  } finally { unlinkSync(temporary); }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "EEXIST") throw new CliError("RESTORE_CONFLICT", "Another writer recreated the target during recovery; it was preserved.");
+    throw error;
+  } finally { if (staged) unlinkSync(temporary); }
   return "created";
 }
 

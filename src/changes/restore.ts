@@ -22,7 +22,7 @@ export function restoreJournal(journal: OperationJournal, lock: CleanupLock, opt
       const bytes = readStateFile(journal.backupPath(index), 2 * 1024 * 1024);
       if (bytes.length !== operation.before.bytes || digest(bytes) !== operation.before.sha256) throw new CliError("BACKUP_INVALID", "Backup bytes do not match the saved plan.");
       journal.append({ type: "restore-intent", index });
-      const outcome = restoreExclusive(journal.root, operation, bytes, metadata);
+      const outcome = restoreExclusive(journal.root, operation, bytes, metadata, `${journal.operationId}-${index}`);
       journal.append({ type: "restored", index, outcome });
     } catch (error) {
       const code = error instanceof CliError ? error.code : "RESTORE_FAILED";
