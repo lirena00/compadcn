@@ -13,7 +13,7 @@ import { registryServer, json, catalog } from "../fixtures/registry/server.mjs";
 const execute = promisify(execFile), cli = fileURLToPath(new URL("../dist/cli.js", import.meta.url));
 const blocker = new URL("../fixtures/cli/register-block-workflows.mjs", import.meta.url).href;
 const analysisBlocker = new URL("../fixtures/cli/register-block-analysis.mjs", import.meta.url).href;
-const source = "export const Value=1;";
+const source = "export const Value=1;\n";
 async function fixture(t, workspace = false) {
   const state = { hold: false, requested: () => {} };
   const server = await registryServer(t, (req, res) => {
@@ -25,7 +25,7 @@ async function fixture(t, workspace = false) {
     if (value) return json(res, value); res.writeHead(404); res.end();
   });
   const appFiles = { "package.json": '{"name":"@example/web","dependencies":{"vite":"7","react":"19"}}',
-    "components.json": JSON.stringify({ aliases: { ui: "./ui" }, registries: { "@shadcn": `${server.url}/official/{name}.json`, "@company": { url: `${server.url}/private/{name}.json`, headers: { Authorization: "Bearer ${CHECK_REGISTRY_TOKEN}" } } } }),
+    "components.json": JSON.stringify({ aliases: { ui: "./ui" }, registries: { "@shadcn": `${server.url}/official/{name}.json`, "@company": { url: `${server.url}/private/{name}.json`, headers: { Authorization: "Bearer ${CHECK_REGISTRY_TOKEN}" } } } }, null, 2),
     "tsconfig.json": '{"compilerOptions":{"baseUrl":".","paths":{"~/*":["./*"]}}}',
     "index.html": '<script type="module" src="/src/main.tsx"></script>', "src/main.tsx": 'import {Value} from "../ui/used";console.log(Value);', "ui/used.tsx": source, "ui/unused.tsx": source,
   };
@@ -60,7 +60,7 @@ test("reviewed baselines survive workspace relocation and detect new findings an
   const artifact = parseCheckBaseline(readFileSync(baseline, "utf8")); assert.equal(artifact.project.selected, "apps/web"); assert.ok(artifact.entries.length > 0);
   assert.throws(() => parseCheckBaseline({ ...artifact, id: "0".repeat(64) }), { code: "CHECK_BASELINE_INVALID" });
   assert.doesNotMatch(JSON.stringify(artifact), /check-private-secret|shadcn-plus-test-/);
-  const copy = createProject(t, files), copiedApp = join(copy, "apps/web");
+  const copy = createProject(t, Object.fromEntries(Object.entries(files).map(([path, content]) => [path, content.replace(/\r?\n/g, "\r\n")]))), copiedApp = join(copy, "apps/web");
   const accepted = await run(copy, ["check", "--cwd", copiedApp, "--baseline", baseline, "--json", "--summary", "--no-cache"], env);
   assert.equal(accepted.status, 0, accepted.stdout); assert.ok(JSON.parse(accepted.stdout).data.check.baseline.accepted >= 1);
   writeFileSync(join(copiedApp, "ui/extra.tsx"), source);

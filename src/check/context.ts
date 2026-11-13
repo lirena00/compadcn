@@ -29,11 +29,15 @@ export function checkContext(project: ProjectContext, options: AuditOptions) {
     const manifest = readObject(context.packageJsonPath, "PACKAGE_JSON_INVALID");
     const metadata = Object.fromEntries(["name", "type", "main", "module", "types", "exports", "imports", "bin", "registries", "workspaces"].filter(key => manifest[key] !== undefined).map(key => [key, manifest[key]]));
     const configs = loadCompilerConfigs(path, root, diagnostics).map(config => ({ path: localPath(root, config.path), config: normalize(config.config) }));
-    const files = readdirSync(path).filter(name => /^(?:next|vite)\.config\./.test(name) || name === "components.json").sort().map(name => ({ path: localPath(root, join(path, name)), hash: digest(readFileSync(join(path, name))) }));
+    const files = readdirSync(path).filter(name => /^(?:next|vite)\.config\./.test(name) || name === "components.json").sort().map(name => {
+      const configPath = join(path, name);
+      const content = name === "components.json" ? canonicalJSON(readObject(configPath, "CONFIG_INVALID")) : readFileSync(configPath, "utf8").replace(/^\uFEFF/, "").replaceAll("\r\n", "\n");
+      return { path: localPath(root, configPath), hash: digest(content) };
+    });
     return { scope: localPath(root, path), framework: context.framework, metadata, configs, files };
   });
   const workspace = project.workspace?.configPath;
-  const body = { contextVersion: 1, scopes, ...(workspace && existsSync(workspace) && !workspace.endsWith("package.json") ? { workspaceHash: digest(readFileSync(workspace)) } : {}),
+  const body = { contextVersion: 1, evidenceMode: "utf8-lf-v1", scopes, ...(workspace && existsSync(workspace) && !workspace.endsWith("package.json") ? { workspaceHash: digest(readFileSync(workspace, "utf8").replace(/^\uFEFF/, "").replaceAll("\r\n", "\n")) } : {}),
     entries: options.entries ?? [], devEntries: options.devEntries ?? [], maxItems: options.maxItems ?? 2000, maxFiles: options.maxFiles ?? 20000 };
   return { root, fingerprint: digest(canonicalJSON(body)), diagnostics };
 }
