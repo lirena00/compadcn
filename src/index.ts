@@ -31,6 +31,9 @@ export type { PlanCheckResult } from "./changes/check.js";
 export type { ApplyOptions } from "./changes/apply.js";
 export type { RestoreOptions } from "./changes/restore.js";
 export type { OperationReceipt, VerificationResult } from "./changes/transaction-types.js";
+export type { Collection, CreateCollectionOptions } from "./collections/model.js";
+export type { CollectionList } from "./collections/files.js";
+export type { MigrationOptions, MigrationReport, MigrationIssue } from "./collections/migrate.js";
 
 // Keep importing the API and constructing/helping the CLI free of filesystem scans.
 export async function discoverProject(
@@ -95,4 +98,23 @@ export async function restoreCleanupOperation(id:string, options:import("./chang
 
 export async function inspectCleanupOperation(id:string, options:Pick<import("./changes/restore.js").RestoreOptions,"cwd">={}):Promise<import("./changes/transaction-types.js").OperationReceipt> {
   return (await import("./changes/restore.js")).inspectCleanupOperation(id, options);
+}
+
+export async function createCollection(options:import("./collections/model.js").CreateCollectionOptions):Promise<import("./collections/model.js").Collection> {
+  return (await import("./collections/model.js")).createCollection(options);
+}
+export async function parseCollection(value:unknown):Promise<import("./collections/model.js").Collection> {
+  return (await import("./collections/model.js")).parseCollection(value);
+}
+export async function readCollection(path:string):Promise<import("./collections/model.js").Collection> {
+  return (await import("./collections/files.js")).readCollection(path);
+}
+export async function writeCollection(value:unknown,path:string):Promise<string> {
+  return (await import("./collections/files.js")).writeCollection(value,path);
+}
+export async function listCollections(directory:string):Promise<import("./collections/files.js").CollectionList> {
+  return (await import("./collections/files.js")).listCollections(directory);
+}
+export async function migrateLegacyPresets(options:import("./collections/migrate.js").MigrationOptions={}):Promise<import("./collections/migrate.js").MigrationReport> {
+  return (await import("./collections/migrate.js")).migrateLegacyPresets(options);
 }

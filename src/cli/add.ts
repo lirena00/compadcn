@@ -13,18 +13,11 @@ import { pickCatalog } from "./catalog-picker.js";
 import { runTask } from "./task.js";
 import { CliOutput, getOutputMode, type OutputOptions } from "./output.js";
 import { terminalText } from "./text.js";
+import { installableTypes, requestedAddresses } from "../catalog/requests.js";
 
 export interface AddCliOptions {
   cwd:string; overwrite?:boolean; yes?:boolean; registry:string[]; type:string[]; query?:string;
   refresh?:boolean; cache:boolean; cacheDir?:string; concurrency:string; timeout:string;
-}
-
-export const installableTypes=new Set(["registry:ui","registry:component","registry:block","registry:hook","registry:lib","registry:page","registry:file","registry:item"]);
-
-function requestedAddresses(values:string[]):string[] {
-  const result=values.map((value)=>value.startsWith("@")?value:`@shadcn/${value}`);
-  if(result.some((value)=>!/^@[\w-]+\/[\w./-]+$/.test(value)||value.split("/").slice(1).some((part)=>!part||part==="."||part==="..")))throw new CliError("INVALID_ARGUMENT","Component requests must be official names or configured @namespace/item addresses.");
-  return [...new Set(result)];
 }
 
 export async function runAdd(components:string[],options:AddCliOptions,outputOptions:OutputOptions):Promise<void> {
