@@ -3,9 +3,9 @@
 A CLI for installing and managing shadcn/ui components and presets, formerly named compadcn.
 
 V2 is under development. This checkout includes multi-registry search and
-installation, dependency graphs, and read-only usage audits alongside the existing
-cleanup and preset commands. Ownership adoption and cleanup plans are still being
-implemented.
+installation, dependency graphs, read-only usage audits, and exact cleanup plans
+alongside the existing cleanup and preset commands. Plan application and recovery
+are the next implementation unit.
 
 ## Features
 
@@ -41,7 +41,7 @@ immediately. JSON responses contain `schemaVersion`, `toolVersion`, `status`, an
 either `data` or `error`. Plain CLI errors go to stderr; JSON errors are returned
 as one structured response on stdout. Parser/runner errors return exit code `2`.
 
-Doctor, inventory, graph, audit, why, search, add, help, version, and CLI errors
+Doctor, inventory, graph, audit, why, search, add, plan, help, version, and CLI errors
 support these output modes. Add requires explicit addresses and `--yes` outside an
 interactive terminal. Legacy lint/remove and preset workflows do not yet support
 `--json` or `--plain`; they return
@@ -50,9 +50,10 @@ Workflows requiring prompts fail with `INTERACTIVE_REQUIRED` when no interactive
 terminal is available or `--no-interactive` is set. `preset list` and `preset show`
 remain available without prompts. Legacy workflows return nonzero exit codes for
 validation, filesystem, and subprocess failures; cancellation remains a normal
-outcome. File cleanup is still non-transactional until plan/apply is implemented.
+outcome. Legacy file cleanup is still non-transactional; the new planner does not
+execute cleanup operations.
 
-Inventory, graph, audit/why, search, and add share one task display. Progress is
+Inventory, graph, audit/why, search, add, and plan share one task display. Progress is
 automatic in an interactive terminal; `--progress` opts into append-only stderr
 stages when output is plain or JSON, and `--no-progress` disables it. JSON stdout
 remains one envelope. Task stages include actual catalog status/cache results,
@@ -96,7 +97,8 @@ shadcn-plus --plain doctor --cwd ./src/features
 Doctor selects the nearest `package.json` from the chosen directory, stopping at
 the Git/worktree boundary. At a workspace root, select the intended app/package
 with `doctor --cwd`; it does not choose an app automatically. `--cwd` currently
-is available on `doctor`, `inventory`, `graph`, `audit`, `why`, `search`, and `add`.
+is available on `doctor`, `inventory`, `graph`, `audit`, `why`, `search`, `add`, and
+the `plan` subcommands.
 
 It reports the framework inferred from dependencies, conventional source folders,
 package manager and its metadata location, workspace members, compiler configs,
@@ -191,8 +193,8 @@ limits preserve incomplete coverage rather than reporting an empty clean invento
 
 The API exposes `await buildInventory({ cwd, offline, cacheDir, items })`. Inventory
 is read-only with respect to project files; its metadata cache is the only write.
-Legacy preset/lint/remove commands keep their existing behavior. Ownership
-adoption and cleanup plans follow in separate implementation units.
+Legacy preset/lint/remove commands keep their existing behavior. Cleanup plan
+application follows in a separate implementation unit.
 
 ### `shadcn-plus graph`
 
@@ -347,6 +349,102 @@ fetching or re-running analysis. Help/version/API imports do not load Knip,
 TypeScript, or the HTML parser. MDX/Vue/Svelte, computed references, unresolved
 aliases, and unsupported configuration retain the graph's coverage limitations.
 No performance or token-saving claim is inferred from these measurements.
+
+### `shadcn-plus plan`
+
+Generate reviewable file-cleanup artifacts without deleting files or executing
+verification scripts. All configured compatible registries use the same planning
+and ownership rules.
+
+```bash
+# Propose a batch of observed ownership mappings, then review the saved JSON.
+shadcn-plus plan snapshot --out .shadcn-plus/ownership.json --json
+
+# Use that reviewed baseline for automatic unused-item planning.
+shadcn-plus plan prune --ownership .shadcn-plus/ownership.json --out .shadcn-plus/plans/cleanup.json --json
+
+# An explicit named proposal can accept an unverified local mapping.
+shadcn-plus plan remove @company/unused-widget --include-unverified --json
+
+# Changes since a reviewed snapshot require a named inclusion.
+shadcn-plus plan remove @company/unused-widget --ownership .shadcn-plus/ownership.json --include-modified --json
+
+# Recheck scope, analysis, ownership, and exact operations; do not apply them.
+shadcn-plus plan check .shadcn-plus/plans/cleanup.json --json
+```
+
+`snapshot` proposes mappings for observed registry items using current local
+hashes, source identities, and manifest hashes. Repeated `--item <reference>`
+restricts the proposal. Review it before passing it to `--ownership`: that argument
+accepts the supplied local mapping as a baseline. The snapshot establishes an
+observed file state; it does not reconstruct installation history or a pristine
+transformed upstream version. Ambiguous origins, partial mappings, linked files,
+and incomplete analysis remain excluded. No project state is written automatically.
+
+`prune` includes only wholly unused, unchanged, mapped items with complete
+analysis. Without a reviewed ownership snapshot, inferred ownership remains
+blocked. `remove <references...>` restricts the proposal to named observed items
+or unmapped files inside managed directories. `--include-unverified` and
+`--include-modified` apply only to these named requests. They do not waive live or
+development usage, public contracts, partial items, ambiguous ownership, unresolved
+analysis, retained consumers, or shared-resource protection. Named multi-item
+requests produce no executable operations if any named target is blocked.
+
+Plans retain imports in application code, packages, lockfiles, CSS/theme/config/
+environment/font effects, and files outside the selected package. Read-only
+analysis includes workspace consumers by default, even without their own
+`components.json`. A retained source consumer or registry-declared dependent blocks
+deletion of its dependency. Orphan pairs/cycles can be proposed together when their
+entire dependency set is eligible. Shared ownership cannot become a partial file
+deletion. Select an owning item instead of one file from its multi-file manifest.
+
+Every operation is an explicit relative `delete-file` path with its before-hash,
+byte count, permissions, owners, and an exact unified deletion diff. No operation
+contains a filesystem glob. JSON artifacts retain CRLF/BOM/no-final-newline bytes;
+terminal previews escape control characters. Content IDs detect changes to an
+artifact, and `plan check` also regenerates eligibility and operations from fresh
+analysis, so recalculating an ID does not establish deletion eligibility.
+
+Input preconditions cover every ordinary non-generated file under the analyzed
+workspace, including consumers, compiler/framework configuration, manifests, and
+lockfiles. Resolved compiler settings also have a fingerprint, including inherited
+configuration. Added, removed, changed, or linked inputs invalidate a saved plan;
+changes detected during planning produce a blocked proposal. Generated/dependency
+directories and `.shadcn-plus` are excluded. A reference that relies on an excluded
+input prevents a ready plan. Source/configuration symlinks and deletion targets
+with multiple hard links remain unsupported. Plans are bound to the creating
+workspace location and selected package; choose the same `--cwd` for checking.
+
+Use `--out <new.json>` to create a bare versioned artifact. It never overwrites an
+existing file or writes over project configuration, and artifacts should live
+outside managed component directories or under `.shadcn-plus`. Output paths are
+relative to the invoking directory. `--out` is the only requested artifact write;
+the registry metadata cache retains its existing behavior. The output artifact
+does not invalidate its own input fingerprint. Blocked proposals can also be saved
+for inspection and contain no executable operations.
+
+JSON success exposes `data.plan` or `data.ownership`, with `output` when a file was
+written. `--summary` omits operation diffs and input-file lists from the response;
+the saved artifact remains complete. Ready and empty plans exit `0`. Blocked or
+incomplete proposals exit `2` with `PLAN_BLOCKED` or `PLAN_INCOMPLETE` and their
+partial plan under `error.details.plan`. Incomplete ownership uses
+`OWNERSHIP_INCOMPLETE`. Stale checks exit `2` with `PLAN_STALE` and change details.
+Plain errors go to stderr; JSON stays one response on stdout.
+
+Planning uses audit's entry/cache/request/analysis flags. `--max-input-files`
+defaults to 50,000 (maximum 100,000), and `--max-input-bytes` defaults to 256 MiB
+(maximum 1 GiB). Previews are limited to 2 MiB per file, 2,000 deletion operations,
+and 8 MiB of combined diff text. Hitting a limit retains affected items or blocks
+incomplete input coverage. Default future verification descriptors cover package
+scripts `typecheck`, `lint`, and `build`; missing scripts are `not-configured`, not
+a pass. Repeated `--verify-script <name>` requires selected scripts and blocks a
+plan if one is missing. Planning and checking never run these scripts.
+
+The lazy API exposes `createOwnershipSnapshot`, `createCleanupPlan`,
+`checkCleanupPlan`, `parseCleanupPlan`, and `parseOwnershipSnapshot`. Parsing and
+checking validate strict versioned schemas, integrity, paths, operation ownership,
+and preview bytes. This unit adds no `apply` or `restore` command; application,
+verification execution, backups, and recovery follow next.
 
 ### `shadcn-plus search [query]`
 
