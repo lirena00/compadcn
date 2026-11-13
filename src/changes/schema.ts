@@ -3,7 +3,7 @@ import { z } from "zod";
 import { canonicalJSON, digest } from "../core/hash.js";
 import { CliError } from "../core/errors.js";
 import { packageInfo } from "../lib/packageInfo.js";
-import { portablePath } from "./paths.js";
+import { portablePath, ignoredDirectories } from "./paths.js";
 import { validateDeletionDiff } from "./diff.js";
 
 const hash = z.string().regex(/^[a-f0-9]{64}$/);
@@ -89,7 +89,7 @@ export function parseCleanupPlan(value: unknown): CleanupPlan {
     const file = files.get(operation.path);
     const {id, ...body} = operation;
     if (id !== digest(canonicalJSON(body)) || !file || file.kind !== "file" || file.links !== 1 || file.sha256 !== operation.before.sha256 || file.bytes !== operation.before.bytes || file.mode !== operation.before.mode || !operation.owners.length || operation.owners.some((owner)=>!selected.get(owner)?.paths.includes(operation.path)) ||
-      !/\.(?:[cm]?[jt]sx?)$/.test(operation.path) || (plan.project.selected!=="."&&!operation.path.startsWith(`${plan.project.selected}/`))) throw new CliError("PLAN_OPERATION_INVALID", "Operation is inconsistent with its owners, project scope, or input preconditions.");
+      !/\.(?:[cm]?[jt]sx?)$/.test(operation.path) || operation.path.split("/").some(part=>ignoredDirectories.has(part)) || (plan.project.selected!=="."&&!operation.path.startsWith(`${plan.project.selected}/`))) throw new CliError("PLAN_OPERATION_INVALID", "Operation is inconsistent with its owners, project scope, or input preconditions.");
     validateDeletionDiff(operation.path,operation.diff,operation.before.sha256,operation.before.bytes);
   }
   const operations = new Map(plan.operations.map((operation)=>[operation.path,operation]));

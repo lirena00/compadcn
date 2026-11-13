@@ -28,6 +28,9 @@ export type { CleanupPlan, CleanupOperation, OwnershipSnapshot, ScopeSnapshot } 
 export type { CleanupPlanOptions } from "./changes/build.js";
 export type { OwnershipOptions } from "./changes/ownership.js";
 export type { PlanCheckResult } from "./changes/check.js";
+export type { ApplyOptions } from "./changes/apply.js";
+export type { RestoreOptions } from "./changes/restore.js";
+export type { OperationReceipt, VerificationResult } from "./changes/transaction-types.js";
 
 // Keep importing the API and constructing/helping the CLI free of filesystem scans.
 export async function discoverProject(
@@ -80,4 +83,16 @@ export async function parseCleanupPlan(value:unknown):Promise<import("./changes/
 
 export async function parseOwnershipSnapshot(value:unknown):Promise<import("./changes/schema.js").OwnershipSnapshot> {
   return (await import("./changes/schema.js")).parseOwnershipSnapshot(value);
+}
+
+export async function applyCleanupPlan(value:unknown, options:import("./changes/apply.js").ApplyOptions={}):Promise<import("./changes/transaction-types.js").OperationReceipt> {
+  return (await import("./changes/apply.js")).applyCleanupPlan(value, options);
+}
+
+export async function restoreCleanupOperation(id:string, options:import("./changes/restore.js").RestoreOptions={}):Promise<import("./changes/transaction-types.js").OperationReceipt> {
+  return (await import("./changes/restore.js")).restoreCleanupOperation(id, options);
+}
+
+export async function inspectCleanupOperation(id:string, options:Pick<import("./changes/restore.js").RestoreOptions,"cwd">={}):Promise<import("./changes/transaction-types.js").OperationReceipt> {
+  return (await import("./changes/restore.js")).inspectCleanupOperation(id, options);
 }

@@ -33,6 +33,7 @@ export function createProgram(options: ProgramOptions = {}): Command {
     if (command === program) return;
     if (command === doctorCommand || command === inventoryCommand || command === graphCommand || command === auditCommand || command === whyCommand || command === searchCommand) return;
     if (command === planCommand || command.parent === planCommand) return;
+    if (command === applyCommand || command === restoreCommand || command === operationCommand) return;
     if (command === addCommand) {
       const settings=command.opts();
       if ((!process.stdin.isTTY || !process.stdout.isTTY || outputOptions.interactive===false || outputOptions.json || outputOptions.plain || process.env.TERM==="dumb") && (!settings.yes || !command.args.length)) throw new CliError("INTERACTIVE_REQUIRED","Use explicit component addresses with --yes for noninteractive add.");
@@ -43,7 +44,7 @@ export function createProgram(options: ProgramOptions = {}): Command {
       throw new CliError(
         "OUTPUT_MODE_UNSUPPORTED",
         "This legacy workflow does not support --json or --plain yet. " +
-          "Doctor, inventory, graph, audit, why, search, add, help, and version output support both modes."
+          "Doctor, inventory, graph, audit, why, search, add, plan, apply, restore, operation, help, and version output support both modes."
       );
     }
 
@@ -192,6 +193,32 @@ export function createProgram(options: ProgramOptions = {}): Command {
     .action(async(path:string,options)=>{
       const {runPlanCheck}=await import("./plan.js");await runPlanCheck(path,options,program.opts<OutputOptions>());
     });
+
+  const applyCommand = program.command("apply").description("Apply one freshly revalidated cleanup plan with backups and required verification")
+    .requiredOption("--plan <path>", "Saved ready cleanup plan JSON")
+    .option("-c, --cwd <path>", "Target project/workspace package", ".")
+    .option("-y, --yes", "Apply the exact reviewed plan without a prompt")
+    .option("--verify", "Run all configured checks (always required)")
+    .option("--precheck", "Also run checks before mutation; stop on pre-existing failures")
+    .option("--verification-timeout <milliseconds>", "Timeout per verification script (1-1800000)", "120000")
+    .option("--offline", "Revalidate using cached registry metadata")
+    .option("--refresh", "Revalidate registry metadata")
+    .option("--no-cache", "Disable persistent registry caching")
+    .option("--cache-dir <path>", "Registry metadata cache directory")
+    .option("-j, --concurrency <number>", "Maximum concurrent registry operations (1-16)", "4")
+    .option("--timeout <milliseconds>", "Timeout per registry request attempt (maximum 60000)", "10000")
+    .option("--analysis-timeout <milliseconds>", "Timeout per Knip pass (1-300000)", "60000")
+    .action(async options => { const { runApply } = await import("./cleanup.js"); await runApply(options, program.opts<OutputOptions>()); });
+
+  const restoreCommand = program.command("restore <operation-id>").description("Recover only a cleanup operation's missing files; preserve conflicts")
+    .option("-c, --cwd <path>", "Original project/workspace package", ".")
+    .option("-y, --yes", "Recover this operation without a prompt")
+    .option("--recover-lock", "Recover this operation's lock only if its same-host owner process has stopped")
+    .action(async (id: string, options) => { const { runRestore } = await import("./cleanup.js"); await runRestore(id, options, program.opts<OutputOptions>()); });
+
+  const operationCommand = program.command("operation <operation-id>").description("Inspect a persisted cleanup or recovery receipt without changing files")
+    .option("-c, --cwd <path>", "Original project/workspace package", ".")
+    .action(async (id: string, options) => { const { runOperation } = await import("./cleanup.js"); await runOperation(id, options, program.opts<OutputOptions>()); });
 
   const presetCommand = program
     .command("preset")
