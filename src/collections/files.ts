@@ -2,6 +2,7 @@ import { lstat, mkdir, open, readdir } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
 import { canonicalPath } from "../project/files.js";
 import { CliError } from "../core/errors.js";
+import { sameFileIdentity } from "../core/file-identity.js";
 import { parseCollection, type Collection } from "./model.js";
 
 export async function readCollectionBytes(path: string, limit = 1024 * 1024): Promise<Buffer> {
@@ -10,7 +11,7 @@ export async function readCollectionBytes(path: string, limit = 1024 * 1024): Pr
   const handle = await open(resolve(path), "r").catch(() => { throw new CliError("COLLECTION_UNREADABLE", "Cannot read the requested collection or legacy preset file."); });
   try {
     const stat = await handle.stat();
-    if (!stat.isFile() || stat.size > limit || stat.ino !== before.ino || stat.dev !== before.dev) throw new CliError("COLLECTION_INPUT_INVALID", "Input must remain an ordinary file within its size limit.");
+    if (!stat.isFile() || stat.size > limit || !sameFileIdentity(stat, before)) throw new CliError("COLLECTION_INPUT_INVALID", "Input must remain an ordinary file within its size limit.");
     const bytes = Buffer.alloc(stat.size + 1); let offset = 0;
     while (offset < bytes.length) { const { bytesRead } = await handle.read(bytes, offset, bytes.length - offset, null); if (!bytesRead) break; offset += bytesRead; }
     const current = await handle.stat();
