@@ -44,6 +44,24 @@ test("named JSON planning works without a terminal for private registries and ch
   assert.doesNotMatch(result.stdout,/cleanup-plan-private-secret/);assert.deepEqual(snapshot(root),before);
 });
 
+test("v1 cleanup aliases use read-only audit and planning for private registries", async (t) => {
+  const { root, env } = await fixture(t), before = snapshot(root);
+  for (const command of ["lint", "l"]) {
+    const result = await run(root, [command, "--json", "--no-cache", "--no-interactive"], env);
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    assert.equal(JSON.parse(result.stdout).data.complete, true);
+  }
+  for (const command of ["remove", "rm"]) {
+    const result = await run(root, [command, "@company/unused", "--include-unverified", "--json", "--no-cache", "--no-interactive"], env);
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    assert.deepEqual(JSON.parse(result.stdout).data.plan.operations.map(({ path }) => path), ["ui/unused.tsx"]);
+    const live = await run(root, [command, "@shadcn/used", "--include-unverified", "--json", "--no-cache"], env);
+    assert.equal(live.status, 2);
+    assert.equal(JSON.parse(live.stdout).error.code, "PLAN_BLOCKED");
+  }
+  assert.deepEqual(snapshot(root), before);
+});
+
 test("batch ownership review enables default pruning; exact artifacts and check are read-only",async(t)=>{
   const {root,env}=await fixture(t);const ownership=join(root,".shadcn-plus/ownership.json"),output=join(root,".shadcn-plus/plans/cleanup.json");
   const snap=await run(root,["plan","snapshot","--out",ownership,"--json","--no-cache"],env);

@@ -32,7 +32,7 @@ export function createProgram(options: ProgramOptions = {}): Command {
     validateOutputOptions(outputOptions);
     if (command === program) return;
     if (command === doctorCommand || command === inventoryCommand || command === graphCommand || command === auditCommand || command === whyCommand || command === searchCommand) return;
-    if (command === planCommand || command.parent === planCommand) return;
+    if (command === planCommand || command.parent === planCommand || command === removeCommand) return;
     if (command === applyCommand || command === restoreCommand || command === operationCommand) return;
     if (command === collectionCommand || command.parent === collectionCommand) return;
     if (command === checkCommand || command.parent === checkCommand || command === agentCommand || command.parent === agentCommand) return;
@@ -141,7 +141,7 @@ export function createProgram(options: ProgramOptions = {}): Command {
       await runSearch(query,searchOptions,program.opts<OutputOptions>());
     });
 
-  const auditCommand = configureAuditCommand(program.command("audit")
+  const auditCommand = configureAuditCommand(program.command("audit").aliases(["lint", "l"])
     .description("Classify local component usage with bounded entry and reference evidence"))
     .option("--summary", "Return counts, coverage, diagnostics and snapshot IDs without finding details")
     .action(async (auditOptions) => {
@@ -333,15 +333,6 @@ export function createProgram(options: ProgramOptions = {}): Command {
       await deletePreset(presetName);
     });
 
-  program
-    .command("lint")
-    .alias("l")
-    .description("Find unused ShadCN components")
-    .action(async () => {
-      const { runLintUI } = await import("../commands/lint.js");
-      await runLintUI();
-    });
-
   const addCommand = program
     .command("add")
     .alias("a")
@@ -363,14 +354,15 @@ export function createProgram(options: ProgramOptions = {}): Command {
       await runAdd(components, options, program.opts<OutputOptions>());
     });
 
-  program
-    .command("remove")
-    .alias("rm")
-    .description("Remove ShadCN UI components from your project")
-    .argument("[components...]", "Component names to remove (e.g., button card)")
-    .action(async (components: string[]) => {
-      const { runRemoveUI } = await import("../commands/remove.js");
-      await runRemoveUI(components);
+  const removeCommand = configurePlanningCommand(program.command("remove <references...>").alias("rm")
+    .description("Preview a read-only removal plan; apply a reviewed artifact with apply --plan"))
+    .option("--ownership <path>", "Reviewed ownership snapshot JSON")
+    .option("--include-unverified", "Accept the observed mapping of these named unverified targets")
+    .option("--include-modified", "Include these named targets if changed since the reviewed snapshot")
+    .option("--verify-script <name>", "Require a named package script during future application (repeatable)", (value: string, previous: string[] = []) => [...previous, value])
+    .action(async (references: string[], options) => {
+      const { runPlan } = await import("./plan.js");
+      await runPlan("remove", references, options, program.opts<OutputOptions>());
     });
 
   return program;

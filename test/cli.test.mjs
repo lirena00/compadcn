@@ -122,7 +122,7 @@ test("unsupported plain workflows fail explicitly", () => {
   assert.match(result.stderr, /^ERROR OUTPUT_MODE_UNSUPPORTED:/);
 });
 
-for (const args of [["add", "button"], ["remove", "button"], ["lint"], ["preset"], ["preset", "install", "core"], ["preset", "create", "demo", "button"], ["preset", "delete", "demo"]]) {
+for (const args of [["add", "button"], ["preset"], ["preset", "install", "core"], ["preset", "create", "demo", "button"], ["preset", "delete", "demo"]]) {
   test(`noninteractive legacy workflows fail before prompting or writing: ${args.join(" ")}`, () => {
     const result = node(["--import", blocker, cli, "--no-interactive", ...args]);
     assert.equal(result.status, 2);

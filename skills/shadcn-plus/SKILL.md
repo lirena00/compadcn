@@ -72,8 +72,8 @@ inspect persisted recovery state and `restore <id>` for authorized recovery.
 Preserve conflicts; do not force overwrite another writer's files. If subprocess
 shutdown is unconfirmed, stop remaining checks before restoring.
 
-Keep package candidates and shared theme/config effects retained. Avoid legacy
-`lint`/`remove` for automated cleanup and do not bypass a blocked plan with shell
+Keep package candidates and shared theme/config effects retained. `lint` aliases read-only audit; `remove` aliases read-only named planning.
+Do not bypass a blocked plan with shell
 deletion or import rewriting. A `--yes` flag suppresses a prompt, without expanding
 the task's existing permission.
 
