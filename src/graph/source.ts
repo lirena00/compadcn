@@ -8,6 +8,7 @@ import { digest } from "../registry/source.js";
 import { fileId, GraphStore, nodeId } from "./model.js";
 import { parseReferences } from "./references.js";
 import { ReferenceResolver } from "./resolve.js";
+import { nextGeneratedDeclaration } from "./next-generated.js";
 
 const excluded = ["node_modules", ".git", ".next", ".turbo", "dist", "build", "coverage", ".cache", ".shadcn-plus"].map((name) => `**/${name}/**`);
 const sourcePattern = /\.(?:[cm]?[jt]sx?|mdx|vue|svelte)$/;
@@ -59,6 +60,13 @@ export function sourceGraph(store: GraphStore, project: ProjectContext, roots: s
           const target = resolver.resolve(reference.specifier, path);
           let to: string;
           if (target.kind === "file") {
+            const generatedHash = nextGeneratedDeclaration(path, target.path, owner);
+            if (generatedHash) {
+              to = nodeId("next-generated-types", target.path);
+              store.node({ id: to, kind: "resource", label: target.path, path: target.path, scope: owner, state: "present", retained: true, resourceKind: "next-generated-types", contentHash: generatedHash });
+              store.edge({ from: id, to, kind: "file-import", phase: "type", status: "resolved", evidence });
+              continue;
+            }
             to = fileId(target.path);
             store.node({ id: to, kind: "file", label: target.path, path: target.path, scope: resolver.scopeOf(target.path), state: "present",
               ...(!sourcePattern.test(target.path) ? { retained: true, resourceKind: "non-code-file" } : {}) });

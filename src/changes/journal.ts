@@ -4,6 +4,7 @@ import { hostname } from "node:os";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { CliError } from "../core/errors.js";
+import { sameFileIdentity } from "../core/file-identity.js";
 import { canonicalJSON, digest } from "../core/hash.js";
 import { ancestors, canonicalPath, isWithin } from "../project/files.js";
 import { parseCleanupPlan, type CleanupPlan } from "./schema.js";
@@ -63,7 +64,7 @@ export class OperationJournal {
     const stat = lstatSync(this.path);
     if (!stat.isFile() || stat.isSymbolicLink() || stat.nlink !== 1 || stat.size !== this.validBytes) throw new CliError("JOURNAL_CHANGED", "Operation journal changed outside its writer.");
     const fd = openSync(this.path, "a");
-    try { if (fstatSync(fd).ino !== stat.ino) throw new CliError("JOURNAL_CHANGED", "Journal identity changed."); appendFileSync(fd, bytes); fsyncSync(fd); } finally { closeSync(fd); }
+    try { if (!sameFileIdentity(fstatSync(fd), stat)) throw new CliError("JOURNAL_CHANGED", "Journal identity changed."); appendFileSync(fd, bytes); fsyncSync(fd); } finally { closeSync(fd); }
     this.events.push(event); this.validBytes += Buffer.byteLength(bytes);
   }
   recoverTail(): void {

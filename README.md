@@ -1,6 +1,7 @@
 # shadcn-plus
 
-A CLI for installing and managing shadcn/ui components and presets, formerly named compadcn.
+A CLI for inventorying, auditing, and safely managing components across shadcn
+registries, formerly named compadcn.
 
 V2 is under development. This checkout includes multi-registry search and
 installation, dependency graphs, read-only usage audits, exact cleanup plans,
@@ -46,7 +47,7 @@ as one structured response on stdout. Parser/runner errors return exit code `2`.
 Doctor, inventory, graph, audit, why, search, add, plan, apply, restore, operation,
 collection, check, agent, help, version, and CLI errors support these output modes. Add requires explicit
 addresses and `--yes` outside an interactive terminal. Apply and restore also
-require `--yes` outside an interactive terminal. Legacy lint/remove and preset workflows do not yet support
+require `--yes` outside an interactive terminal. The legacy preset workflows do not support
 `--json` or `--plain`; they return
 `OUTPUT_MODE_UNSUPPORTED` instead of mixing terminal text with machine output.
 Workflows requiring prompts fail with `INTERACTIVE_REQUIRED` when no interactive
@@ -130,8 +131,8 @@ contents and registry authentication values are excluded from the report.
 
 The API exposes `await discoverProject({ cwd })` with the same context and
 diagnostics, without changing `process.cwd()`. This service is the foundation for
-the inventory/graph commands. Existing component workflows still use
-their legacy discovery and cleanup behavior until those units are implemented.
+the inventory, graph, audit, and cleanup commands. Legacy preset commands retain
+their original installation flow; use collections for the v2 workflow.
 
 ### `shadcn-plus inventory`
 
@@ -196,8 +197,8 @@ limits preserve incomplete coverage rather than reporting an empty clean invento
 
 The API exposes `await buildInventory({ cwd, offline, cacheDir, items })`. Inventory
 is read-only with respect to project files; its metadata cache is the only write.
-Legacy preset/lint/remove commands keep their existing behavior. The new
-plan/apply workflow uses the shared inventory, graph, and audit services.
+The plan/apply workflow and the `lint`/`remove` compatibility commands use
+the shared inventory, graph, and audit services.
 
 ### `shadcn-plus graph`
 
@@ -857,40 +858,30 @@ and 4,096 characters per address. Migration accepts up to 8 MiB of legacy data,
 `createCollection`, `parseCollection`, `readCollection`, `writeCollection`,
 `listCollections`, and `migrateLegacyPresets`.
 
-### `shadcn-plus remove [components...]`
+### `shadcn-plus remove <references...>`
 
-Remove ShadCN components from your project.
+`remove` (alias `rm`) is a read-only shorthand for `plan remove`. It requires
+explicit references and supports the same ownership, entry, registry, output,
+and verification options. It never edits imports or uninstalls dependencies.
 
 ```bash
-# Interactive mode - select installed components to remove
-shadcn-plus remove
-
-# Remove specific components
-shadcn-plus remove button card
+shadcn-plus remove @company/unused-widget --include-unverified --out cleanup.json --json
+# Review cleanup.json before applying its exact operations.
+shadcn-plus apply --plan cleanup.json --yes --json
 ```
 
-**Features:**
-
-- Interactive removal with confirmation
-- Dependency conflict detection
-- Automatic import cleanup from your codebase
-- Optional dependency removal
-- Validates internal dependencies before removal
+Live consumers, incomplete analysis, ambiguous ownership, and shared resources
+remain protected. Running `remove` without references returns a parser error.
 
 ### `shadcn-plus lint`
 
-Find and remove unused ShadCN components from your project.
+`lint` (alias `l`) runs the read-only `audit` command with the same options,
+evidence, uncertainty, JSON contract, and exit codes. It does not prompt for
+removal. Use ownership review and `plan prune` to propose unused-file cleanup.
 
 ```bash
-shadcn-plus lint
+shadcn-plus lint --json --summary
 ```
-
-**Features:**
-
-- Scans your entire codebase for component usage
-- Identifies unused components
-- Option to automatically remove unused components
-- Provides removal commands for manual cleanup
 
 ### `shadcn-plus preset`
 
@@ -937,10 +928,14 @@ Package-manager detection uses the nearest project's `packageManager` field or
 lockfile before the launcher environment. It supports `bun.lock` and `bun.lockb`,
 and reports conflicting declarations/lockfiles instead of choosing silently.
 The installer runners use npm/npx, pnpm dlx, modern Yarn dlx, or Bun bunx.
-External installers/removers inherit terminal input and output so their prompts
+External installers inherit terminal input and output so their prompts
 and diagnostics remain visible. Configure `tailwind.cssVariables` in
 `components.json`; the old add-time CSS-variable flags are not accepted by
 upstream `shadcn add` and are no longer exposed.
+
+See [compatibility and reproducible verification](docs/compatibility.md) for the
+tested framework corpus, platform/Node matrix, package smoke checks, benchmarks,
+and their limits.
 
 ## How It Works
 

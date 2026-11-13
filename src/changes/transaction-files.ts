@@ -3,6 +3,7 @@ import { dirname, join, resolve } from "node:path";
 import { canonicalPath, isWithin } from "../project/files.js";
 import { digest } from "../core/hash.js";
 import { CliError } from "../core/errors.js";
+import { sameFileIdentity } from "../core/file-identity.js";
 import { resolveLocal } from "./paths.js";
 import type { CleanupOperation } from "./schema.js";
 
@@ -34,11 +35,11 @@ export function readOrdinary(path: string, maxBytes: number, expectedLinks = 1):
   const fd = openSync(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
   try {
     const stat = fstatSync(fd);
-    if (!stat.isFile() || stat.ino !== before.ino || stat.dev !== before.dev || stat.nlink !== expectedLinks || stat.size > maxBytes) throw new CliError("CLEANUP_FILE_CHANGED", "File identity changed while opening it.");
+    if (!stat.isFile() || !sameFileIdentity(stat, before) || stat.nlink !== expectedLinks || stat.size > maxBytes) throw new CliError("CLEANUP_FILE_CHANGED", "File identity changed while opening it.");
     const bytes = Buffer.alloc(stat.size); let offset = 0;
     while (offset < bytes.length) { const size = readSync(fd, bytes, offset, bytes.length - offset, null); if (!size) break; offset += size; }
     const after = fstatSync(fd), current = lstatSync(path);
-    if (offset !== bytes.length || after.size !== stat.size || after.mtimeMs !== stat.mtimeMs || after.ctimeMs !== stat.ctimeMs || current.ino !== stat.ino || current.dev !== stat.dev || current.isSymbolicLink() || canonicalPath(path) !== resolve(path)) throw new CliError("CLEANUP_FILE_CHANGED", "File changed while reading its bytes.");
+    if (offset !== bytes.length || after.size !== stat.size || after.mtimeMs !== stat.mtimeMs || after.ctimeMs !== stat.ctimeMs || !sameFileIdentity(current, stat) || current.isSymbolicLink() || canonicalPath(path) !== resolve(path)) throw new CliError("CLEANUP_FILE_CHANGED", "File changed while reading its bytes.");
     return { bytes, stat };
   } finally { closeSync(fd); }
 }
