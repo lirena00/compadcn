@@ -9,7 +9,7 @@ export interface PlanTarget {
 }
 
 export function itemTarget(context:PlanningContext,item:ItemFinding):PlanTarget {
-  const files=new Map(context.session.report.files.map((file)=>[file.id,file]));
+  const files=context.index.files;
   return {id:item.id,label:item.label,kind:"item",item,files:item.files.map((id)=>files.get(id)!)};
 }
 
@@ -22,6 +22,6 @@ export function resolveTarget(context:PlanningContext,reference:string):PlanTarg
 }
 
 export function originProofs(context:PlanningContext,target:PlanTarget,nodeIds=target.item?.nodeIds ?? []) {
-  const nodes=new Map(context.session.graph.nodes.map((node)=>[node.id,node]));
+  const nodes=context.index.nodes;
   return nodeIds.map((id)=>nodes.get(id)!).filter((node)=>node?.manifestHash).map((node)=>({nodeId:node.id,addresses:node.addresses ?? [node.label],sourceIds:node.sourceIds ?? [],manifestHash:node.manifestHash!})).sort((a,b)=>a.nodeId.localeCompare(b.nodeId));
 }

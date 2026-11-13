@@ -11,7 +11,7 @@ export async function createOwnershipSnapshot(options:OwnershipOptions={}):Promi
   const context=await beginPlanning(options);
   const targets=options.items?.length?options.items.map((reference)=>resolveTarget(context,reference)):context.session.report.items.map((item)=>itemTarget(context,item));
   const items:OwnershipSnapshot["items"]=[],excluded:OwnershipSnapshot["excluded"]=[];
-  const indexed=new Map(context.inputs.files.map((file)=>[file.path,file]));
+  const indexed=context.index.inputs;
   for(const target of [...new Map(targets.map((target)=>[target.id,target])).values()]) {
     const reasons:string[]=[];
     if(target.kind!=="item")reasons.push("OWNERSHIP_ITEM_REQUIRED");
@@ -37,6 +37,6 @@ export function ownershipFor(context:PlanningContext,target:PlanTarget,snapshot:
   if(!record)return {verified:false,modified:false,reasons:["OWNERSHIP_UNVERIFIED"]};
   const paths=target.files.map(({path})=>localPath(context.inputs.root,path)).sort();
   if(!snapshot!.complete||snapshot!.project.root!==context.inputs.root||canonicalJSON(record.files.map(({path})=>path).sort())!==canonicalJSON(paths)||canonicalJSON(record.origins)!==canonicalJSON(originProofs(context,target)))return {verified:false,modified:false,reasons:["OWNERSHIP_MAPPING_CHANGED"]};
-  const indexed=new Map(context.inputs.files.map((file)=>[file.path,file.sha256]));
-  return {verified:true,modified:record.files.some(({path,sha256})=>indexed.get(path)!==sha256),reasons:[]};
+  const indexed=context.index.inputs;
+  return {verified:true,modified:record.files.some(({path,sha256})=>indexed.get(path)?.sha256!==sha256),reasons:[]};
 }

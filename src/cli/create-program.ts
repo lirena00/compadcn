@@ -32,6 +32,7 @@ export function createProgram(options: ProgramOptions = {}): Command {
     validateOutputOptions(outputOptions);
     if (command === program) return;
     if (command === doctorCommand || command === inventoryCommand || command === graphCommand || command === auditCommand || command === whyCommand || command === searchCommand) return;
+    if (command === planCommand || command.parent === planCommand) return;
     if (command === addCommand) {
       const settings=command.opts();
       if ((!process.stdin.isTTY || !process.stdout.isTTY || outputOptions.interactive===false || outputOptions.json || outputOptions.plain || process.env.TERM==="dumb") && (!settings.yes || !command.args.length)) throw new CliError("INTERACTIVE_REQUIRED","Use explicit component addresses with --yes for noninteractive add.");
@@ -152,6 +153,46 @@ export function createProgram(options: ProgramOptions = {}): Command {
       await runAudit(auditOptions, program.opts<OutputOptions>(), reference);
     });
 
+  const planCommand = program.command("plan")
+    .description("Create ownership snapshots and exact read-only cleanup proposals")
+    .allowExcessArguments(false)
+    .action(()=>planCommand.help());
+
+  configurePlanningCommand(planCommand.command("snapshot").description("Propose observed registry ownership mappings for review"))
+    .option("--item <reference>","Restrict the snapshot to a named observed item (repeatable)",(value:string,previous:string[])=>[...previous,value],[])
+    .action(async(options)=>{
+      const {runPlan}=await import("./plan.js");await runPlan("snapshot",[],options,program.opts<OutputOptions>());
+    });
+
+  configurePlanningCommand(planCommand.command("prune").description("Propose cleanup of eligible unused items from a reviewed ownership snapshot"))
+    .option("--ownership <path>","Reviewed ownership snapshot JSON")
+    .option("--verify-script <name>","Require a named package script during future application (repeatable)",(value:string,previous:string[]=[])=>[...previous,value])
+    .action(async(options)=>{
+      const {runPlan}=await import("./plan.js");await runPlan("prune",[],options,program.opts<OutputOptions>());
+    });
+
+  configurePlanningCommand(planCommand.command("remove <references...>").description("Propose whole unused file sets for explicitly named items or unmapped managed files"))
+    .option("--ownership <path>","Reviewed ownership snapshot JSON")
+    .option("--include-unverified","Accept the observed mapping of these named unverified targets")
+    .option("--include-modified","Include these named targets if changed since the reviewed snapshot")
+    .option("--verify-script <name>","Require a named package script during future application (repeatable)",(value:string,previous:string[]=[])=>[...previous,value])
+    .action(async(references:string[],options)=>{
+      const {runPlan}=await import("./plan.js");await runPlan("remove",references,options,program.opts<OutputOptions>());
+    });
+
+  planCommand.command("check <path>").description("Revalidate a saved plan's input scope, analysis, and exact operations without applying it")
+    .option("-c, --cwd <path>","Target project/workspace package",".")
+    .option("--offline","Use cached registry metadata")
+    .option("--refresh","Revalidate registry metadata")
+    .option("--no-cache","Disable persistent registry caching")
+    .option("--cache-dir <path>","Registry metadata cache directory")
+    .option("-j, --concurrency <number>","Maximum concurrent registry operations (1-16)","4")
+    .option("--timeout <milliseconds>","Timeout per registry request attempt (maximum 60000)","10000")
+    .option("--analysis-timeout <milliseconds>","Timeout per Knip pass (1-300000)","60000")
+    .action(async(path:string,options)=>{
+      const {runPlanCheck}=await import("./plan.js");await runPlanCheck(path,options,program.opts<OutputOptions>());
+    });
+
   const presetCommand = program
     .command("preset")
     .alias("p")
@@ -269,4 +310,12 @@ function configureAuditCommand(command: Command): Command {
     .option("--analysis-timeout <milliseconds>", "Timeout per Knip pass (1-300000)", "60000")
     .option("--max-items <number>", "Registry closure limit (1-10000)", "2000")
     .option("--max-files <number>", "Source parsing limit (1-100000)", "20000");
+}
+
+function configurePlanningCommand(command:Command):Command {
+  return configureAuditCommand(command)
+    .option("--out <path>","Create a new JSON artifact without overwriting an existing file")
+    .option("--summary","Omit operation diffs and input-file lists from terminal/JSON output")
+    .option("--max-input-files <number>","Complete-scope fingerprint file limit (1-100000)","50000")
+    .option("--max-input-bytes <number>","Complete-scope fingerprint byte limit (maximum 1073741824)","268435456");
 }

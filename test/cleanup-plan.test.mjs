@@ -8,6 +8,7 @@ import { checkCleanupPlan } from "../dist/changes/check.js";
 import { parseCleanupPlan, withId } from "../dist/changes/schema.js";
 import { writeArtifact, readArtifact } from "../dist/changes/io.js";
 import { discoverProject } from "../dist/project/discover.js";
+import { deletionDiff } from "../dist/changes/diff.js";
 import { createProject } from "../fixtures/cli/project-fixture.mjs";
 import { registryServer,json,catalog } from "../fixtures/registry/server.mjs";
 
@@ -19,10 +20,11 @@ async function fixture(t,values=[item("used"),item("unused")],extra={}){
     if(name==="registry")return json(res,catalog(values));
     const value=values.find((value)=>value.name===name);if(value)return json(res,value);res.writeHead(404);res.end();
   });
-  const root=createProject(t,{"package.json":'{"dependencies":{"vite":"7","react":"19"},"scripts":{"typecheck":"echo verification-marker-secret","build":"echo build"}}',
+  const overrides=typeof extra==="function"?extra(server.url):extra;
+  const root=createProject(t,Object.fromEntries(Object.entries({"package.json":'{"dependencies":{"vite":"7","react":"19"},"scripts":{"typecheck":"echo verification-marker-secret","build":"echo build"}}',
     "components.json":JSON.stringify({aliases:{ui:"./ui",components:"./components",hooks:"./hooks"},registries:{"@shadcn":`${server.url}/{name}.json`,"@custom":`${server.url}/{name}.json`}}),
     "index.html":'<script type="module" src="/src/main.tsx"></script>',"src/main.tsx":'import {Value} from "../ui/used";console.log(Value);',
-    "ui/used.tsx":content,"ui/unused.tsx":content,...extra});
+    "ui/used.tsx":content,"ui/unused.tsx":content,...overrides}).filter(([,value])=>value!==null)));
   const options={cwd:root,cacheDir:false};return {root,server,options};
 }
 
@@ -134,4 +136,41 @@ test("fresh verification descriptions never execute package scripts and required
   assert.equal(plan.status,"ready",JSON.stringify(plan.diagnostics));assert.equal(existsSync(join(root,"executed")),false);
   const missing=await createCleanupPlan({...options,mode:"remove",targets:["@custom/unused"],includeUnverified:true,verificationScripts:["required-check"]});
   assert.equal(missing.status,"blocked");assert.ok(missing.diagnostics.some(({code})=>code==="PLAN_VERIFICATION_MISSING"));
+});
+
+test("a recomputed artifact cannot turn a live component into an eligible deletion",async(t)=>{
+  const {root,options}=await fixture(t),ownership=await createOwnershipSnapshot(options);
+  const plan=await createCleanupPlan({...options,ownership,mode:"remove",targets:["@custom/unused"]});
+  const used=ownership.items.find(({addresses})=>addresses.includes("@custom/used"));
+  const input=plan.inputs.files.find(({path})=>path==="ui/used.tsx");
+  const {id,...body}=plan;
+  const forged=withId({...body,policy:{...plan.policy,targets:[used.id]},selected:[{...plan.selected[0],id:used.id,label:used.addresses[0],paths:["ui/used.tsx"]}],
+    operations:[withId({kind:"delete-file",path:"ui/used.tsx",before:{sha256:input.sha256,bytes:input.bytes,mode:input.mode},after:{exists:false},owners:[used.id],diff:deletionDiff("ui/used.tsx",content)})]});
+  parseCleanupPlan(forged);const checked=await checkCleanupPlan(forged,options);
+  assert.equal(checked.valid,false);assert.ok(checked.diagnostics.some(({code})=>code==="PLAN_ELIGIBILITY_CHANGED"));assert.equal(readFileSync(join(root,"ui/used.tsx"),"utf8"),content);
+});
+
+for(const framework of ["next","vite-jsx"]){
+  test(`cleanup plans use the shared supported analysis for ${framework}`,async(t)=>{
+    const {options}=await fixture(t,undefined,(url)=>framework==="next"?{
+      "package.json":'{"dependencies":{"next":"16","react":"19"}}',"src/app/(group)/page.tsx":'import {Value} from "../../../ui/used";export default function Page(){return Value;}',
+    }:{"src/main.tsx":null,"ui/used.tsx":null,"ui/unused.tsx":null,"components.json":JSON.stringify({tsx:false,aliases:{ui:"./ui"},registries:{"@shadcn":`${url}/{name}.json`}}),
+      "index.html":'<script type="module" src="/src/main.jsx"></script>',"src/main.jsx":'import {Value} from "../ui/used.jsx";console.log(Value);',"ui/used.jsx":content,"ui/unused.jsx":content});
+    const ownership=await createOwnershipSnapshot(options),plan=await createCleanupPlan({...options,ownership});
+    assert.equal(plan.status,"ready",JSON.stringify(plan.diagnostics));assert.deepEqual(plan.operations.map(({path})=>path),[framework==="next"?"ui/unused.tsx":"ui/unused.jsx"]);
+  });
+}
+
+test("workspace consumers retain live components and selected package boundaries remain enforced",async(t)=>{
+  const server=await registryServer(t,(req,res)=>{const name=new URL(req.url,"http://local").pathname.split("/").at(-1).replace(/\.json$/,"");const values=[item("used"),item("unused")];json(res,name==="registry"?catalog(values):values.find((value)=>value.name===name));});
+  const root=createProject(t,{"package.json":'{"workspaces":["apps/*"]}',
+    "apps/web/package.json":'{"dependencies":{"vite":"7","react":"19"}}',"apps/web/components.json":JSON.stringify({aliases:{ui:"./ui"},registries:{"@shadcn":`${server.url}/{name}.json`}}),
+    "apps/web/index.html":'<script type="module" src="/src/main.tsx"></script>',"apps/web/src/main.tsx":'import {Value} from "../ui/used";console.log(Value);',"apps/web/ui/used.tsx":content,"apps/web/ui/unused.tsx":content,
+    "apps/consumer/package.json":'{"dependencies":{"react":"19"}}',"apps/consumer/src/main.tsx":'console.log("consumer");'});
+  const options={cwd:join(root,"apps/web"),cacheDir:false},ownership=await createOwnershipSnapshot(options);
+  const outside=await createCleanupPlan({...options,cwd:join(root,"apps/consumer"),ownership,mode:"remove",targets:["@shadcn/unused"]});
+  assert.equal(outside.status,"blocked");assert.ok(outside.excluded[0].reasons.includes("SHARED_WORKSPACE_FILE_RETAINED"));
+  writeFileSync(join(root,"apps/consumer/src/main.tsx"),'import "../../web/ui/unused";');
+  const shared=await createCleanupPlan({...options,ownership,mode:"remove",targets:["@shadcn/unused"]});
+  assert.equal(shared.status,"blocked");assert.ok(shared.excluded[0].reasons.includes("USAGE_RETAINED"));assert.equal(shared.analysis.coverage.workspace,true);
 });

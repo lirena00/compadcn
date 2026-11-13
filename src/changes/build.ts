@@ -29,8 +29,8 @@ export async function createCleanupPlan(options:CleanupPlanOptions={},savedExclu
   const unique=[...new Map(targets.map((target)=>[target.id,target])).values()].sort((a,b)=>a.id.localeCompare(b.id));
   const reasons=new Map(unique.map((target)=>[target.id,[] as string[]]));
   const ownershipStates=new Map(unique.map((target)=>[target.id,ownershipFor(context,target,ownership)]));
-  const inputs=new Map(context.inputs.files.map((file)=>[file.path,file]));
-  const nodes=new Map(graph.nodes.map((node)=>[node.id,node]));
+  const inputs=context.index.inputs;
+  const nodes=context.index.nodes;
   for(const target of unique){
     const why=reasons.get(target.id)!,state=ownershipStates.get(target.id)!;
     if(!context.complete)why.push("ANALYSIS_OR_INPUTS_INCOMPLETE");
