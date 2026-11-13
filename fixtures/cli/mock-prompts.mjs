@@ -13,3 +13,9 @@ export const select = async ({ options }) => options[0]?.value;
 export const multiselect = async ({ options, required, initialValues }) => required === false
   ? process.env.SHADCN_PLUS_SELECT_DEPS ? options.map((option) => option.value) : []
   : initialValues?.length ? initialValues : options.slice(0, 1).map((option) => option.value);
+export const autocompleteMultiselect = async ({options}) => {
+  if(process.env.SHADCN_PLUS_CANCEL_PICKER)return cancelled;
+  const pool=typeof options==="function"?options.call({selectedValues:[]}):options;
+  const address=process.env.SHADCN_PLUS_PICK_ADDRESS;
+  return pool.filter((option)=>!option.disabled&&(!address||option.label.startsWith(address))).slice(0,1).map(({value})=>value);
+};

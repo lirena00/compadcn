@@ -31,18 +31,23 @@ export function createProgram(options: ProgramOptions = {}): Command {
     const outputOptions = program.opts<OutputOptions>();
     validateOutputOptions(outputOptions);
     if (command === program) return;
-    if (command === doctorCommand || command === inventoryCommand || command === graphCommand || command === auditCommand || command === whyCommand) return;
+    if (command === doctorCommand || command === inventoryCommand || command === graphCommand || command === auditCommand || command === whyCommand || command === searchCommand) return;
+    if (command === addCommand) {
+      const settings=command.opts();
+      if ((!process.stdin.isTTY || !process.stdout.isTTY || outputOptions.interactive===false || outputOptions.json || outputOptions.plain || process.env.TERM==="dumb") && (!settings.yes || !command.args.length)) throw new CliError("INTERACTIVE_REQUIRED","Use explicit component addresses with --yes for noninteractive add.");
+      return;
+    }
 
     if (outputOptions.json || outputOptions.plain) {
       throw new CliError(
         "OUTPUT_MODE_UNSUPPORTED",
         "This legacy workflow does not support --json or --plain yet. " +
-          "Doctor, inventory, graph, audit, why, help, and version output support both modes."
+          "Doctor, inventory, graph, audit, why, search, add, help, and version output support both modes."
       );
     }
 
     const canPrompt = Boolean(process.stdin.isTTY && process.stdout.isTTY) &&
-      outputOptions.interactive !== false;
+      outputOptions.interactive !== false && process.env.TERM !== "dumb";
     const isReadOnlyPreset = command.parent?.name() === "preset" &&
       ["list", "show"].includes(command.name());
 
@@ -110,6 +115,26 @@ export function createProgram(options: ProgramOptions = {}): Command {
     .action(async (graphOptions) => {
       const { runGraph } = await import("./graph.js");
       await runGraph(graphOptions, program.opts<OutputOptions>());
+    });
+
+  const searchCommand = program.command("search [query]")
+    .description("Search configured registry catalogs and local-file presence without installing")
+    .option("-c, --cwd <path>","Target project or workspace package",".")
+    .option("--workspace","Search every configured workspace registry")
+    .option("--item <address>","Include a known item from a catalog-less source (repeatable)",(value:string,previous:string[])=>[...previous,value],[])
+    .option("--registry <namespace>","Filter by @namespace (repeatable)",(value:string,previous:string[])=>[...previous,value],[])
+    .option("--type <type>","Filter by registry type such as ui or block (repeatable)",(value:string,previous:string[])=>[...previous,value],[])
+    .option("--presence <state>","Filter local-file presence: any, present, partial, absent, unknown","any")
+    .option("--limit <number>","Maximum matches in the result (1-1000)","50")
+    .option("--offline","Read cached registry metadata without network requests")
+    .option("--refresh","Revalidate cached registry metadata")
+    .option("--no-cache","Disable persistent registry caching")
+    .option("--cache-dir <path>","Registry metadata cache directory")
+    .option("-j, --concurrency <number>","Maximum concurrent registry operations (1-16)","4")
+    .option("--timeout <milliseconds>","Timeout per request attempt (maximum 60000)","10000")
+    .action(async(query:string|undefined,searchOptions)=>{
+      const {runSearch}=await import("./search.js");
+      await runSearch(query,searchOptions,program.opts<OutputOptions>());
     });
 
   const auditCommand = configureAuditCommand(program.command("audit")
@@ -194,15 +219,25 @@ export function createProgram(options: ProgramOptions = {}): Command {
       await runLintUI();
     });
 
-  program
+  const addCommand = program
     .command("add")
     .alias("a")
-    .description("Add ShadCN components to your project")
+    .description("Search configured registries and install selected components")
+    .option("-c, --cwd <path>","Target project or workspace package",".")
     .option("-o, --overwrite", "Overwrite existing files")
+    .option("-y, --yes","Install explicit selections without confirmation")
+    .option("--registry <namespace>","Filter the picker by @namespace (repeatable)",(value:string,previous:string[])=>[...previous,value],[])
+    .option("--type <type>","Filter the picker by registry type (repeatable)",(value:string,previous:string[])=>[...previous,value],[])
+    .option("--query <text>","Limit the picker to matching catalog entries")
+    .option("--refresh","Revalidate cached registry metadata")
+    .option("--no-cache","Disable persistent registry caching")
+    .option("--cache-dir <path>","Registry metadata cache directory")
+    .option("-j, --concurrency <number>","Maximum concurrent registry operations (1-16)","4")
+    .option("--timeout <milliseconds>","Timeout per request attempt (maximum 60000)","10000")
     .argument("[components...]", "Component names to add (e.g., button card)")
     .action(async (components: string[], options) => {
-      const { runAddUI } = await import("../commands/add.js");
-      await runAddUI(components, options);
+      const { runAdd } = await import("./add.js");
+      await runAdd(components, options, program.opts<OutputOptions>());
     });
 
   program

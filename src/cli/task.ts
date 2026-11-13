@@ -17,7 +17,7 @@ export async function runTask<T>(title: string, options: OutputOptions, operatio
   const abort = () => controller.abort();
   const mode = getOutputMode(options);
   const visible = options.progress ?? mode === "interactive";
-  const animated = visible && mode === "interactive" && !!process.stderr.isTTY;
+  const animated = visible && mode === "interactive" && !!process.stderr.isTTY && !["1","true"].includes(process.env.ACCESSIBLE ?? "");
   let display: ReturnType<typeof import("@clack/prompts")["spinner"]> | undefined;
   let started = false, mutating = false;
   let lastPaint = 0;
