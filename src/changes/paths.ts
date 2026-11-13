@@ -5,7 +5,7 @@ import { canonicalPath, isWithin } from "../project/files.js";
 export const ignoredDirectories = new Set(["node_modules", ".git", ".next", ".turbo", "dist", "build", "coverage", ".cache", ".shadcn-plus"]);
 
 export function portablePath(value: string, allowRoot = false): boolean {
-  return (allowRoot && value === ".") || (!!value && !/[\\:\p{Cc}\p{Cf}]/u.test(value) && !value.startsWith("/") && value.split("/").every((part) => !!part && part !== "." && part !== ".."));
+  return (allowRoot && value === ".") || (!!value && !/[\\:\p{Cc}\p{Cf}]/u.test(value) && !value.startsWith("/") && value.split("/").every((part) => !!part && part !== "." && part !== ".." && !/[. ]$/.test(part) && !/^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(part)));
 }
 
 export function localPath(root: string, path: string): string {
