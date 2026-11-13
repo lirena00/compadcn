@@ -8,8 +8,9 @@ import { isObject } from "../project/files.js";
 import { parseDocument } from "./schema.js";
 import type { RegistrySource } from "./source.js";
 import type { CatalogResult, FetchResult, RegistryDocument } from "./types.js";
+import { reportProgress, type ProgressOptions } from "../core/progress.js";
 
-export interface RegistryClientOptions {
+export interface RegistryClientOptions extends ProgressOptions {
   cacheDir?: string | false;
   offline?: boolean;
   refresh?: boolean;
@@ -221,6 +222,14 @@ export class RegistryClient {
   }
 
   async catalog(source: RegistrySource): Promise<CatalogResult> {
+    const identity = { id: source.descriptor.id, namespace: source.descriptor.namespace, scope: source.descriptor.scope };
+    reportProgress(this.options, { stage: "registry", state: "start", message: `Reading ${identity.namespace} catalog`, source: identity });
+    const result = await this.#catalog(source);
+    reportProgress(this.options, { stage: "registry", state: "complete", message: `${identity.namespace}: ${result.status}, ${result.items.length} items`, source: { ...identity, status: result.status, cache: result.cache } });
+    return result;
+  }
+
+  async #catalog(source: RegistrySource): Promise<CatalogResult> {
     const result: CatalogResult = { source: source.descriptor, status: "ready", items: [], pages: 0, cache: [], diagnostics: [] };
     const names = new Set<string>();
     let offset = 0;

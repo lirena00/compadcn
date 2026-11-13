@@ -15,6 +15,8 @@ export function createProgram(options: ProgramOptions = {}): Command {
     .option("--json", "Output structured JSON for supported commands")
     .option("--plain", "Output plain text for supported commands")
     .option("--no-interactive", "Disable interactive prompts")
+    .option("--progress", "Show task stages on stderr (automatic in an interactive terminal)")
+    .option("--no-progress", "Disable task progress output")
     .exitOverride()
     .configureOutput({
       writeOut: options.writeInformation ?? ((text) => process.stdout.write(text)),

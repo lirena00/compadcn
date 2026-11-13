@@ -16,4 +16,11 @@ export interface CommandFailure {
   };
 }
 
-export type CommandResult<T> = CommandSuccess<T> | CommandFailure;
+export interface CommandCancellation {
+  schemaVersion: 1;
+  toolVersion: string;
+  status: "cancelled";
+  data: { message: string };
+}
+
+export type CommandResult<T> = CommandSuccess<T> | CommandFailure | CommandCancellation;

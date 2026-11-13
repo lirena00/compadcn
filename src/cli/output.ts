@@ -1,6 +1,6 @@
 import { CliError } from "../core/errors.js";
 import { packageInfo } from "../lib/packageInfo.js";
-import type { CommandFailure, CommandSuccess } from "../core/results.js";
+import type { CommandFailure, CommandSuccess, CommandCancellation } from "../core/results.js";
 
 export type OutputMode = "interactive" | "plain" | "json";
 
@@ -8,6 +8,7 @@ export interface OutputOptions {
   json?: boolean;
   plain?: boolean;
   interactive?: boolean;
+  progress?: boolean;
 }
 
 export interface OutputWriter {
@@ -19,7 +20,7 @@ export function getOutputMode(
   isTTY = Boolean(process.stdin.isTTY && process.stdout.isTTY)
 ): OutputMode {
   if (options.json) return "json";
-  if (options.plain || options.interactive === false || !isTTY) return "plain";
+  if (options.plain || options.interactive === false || !isTTY || process.env.TERM === "dumb") return "plain";
   return "interactive";
 }
 
@@ -66,5 +67,12 @@ export class CliOutput {
     } else {
       this.stderr.write(`ERROR ${error.code}: ${error.message}\n`);
     }
+  }
+
+  cancelled(message: string): void {
+    if (this.mode === "json") {
+      const result: CommandCancellation = { schemaVersion: 1, toolVersion: packageInfo.version, status: "cancelled", data: { message } };
+      this.stdout.write(JSON.stringify(result) + "\n");
+    } else this.stdout.write(`${message}\n`);
   }
 }

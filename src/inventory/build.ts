@@ -7,6 +7,7 @@ import type { Diagnostic, ProjectContext } from "../project/types.js";
 import { RegistryClient, mapLimit, type RegistryClientOptions } from "../registry/client.js";
 import { digest, loadRegistrySources, type RegistrySource } from "../registry/source.js";
 import type { RemoteItem } from "../registry/types.js";
+import { reportProgress } from "../core/progress.js";
 import { localNames, mapFile, scanLocalFiles } from "./files.js";
 import type { InventoryItem, InventoryReport, LocalFile } from "./types.js";
 
@@ -66,6 +67,7 @@ export async function createInventorySession(options: InventoryOptions = {}): Pr
     throw new CliError("INVALID_OPTIONS", "Use concurrency 1-16, and choose either offline or refresh mode.");
   }
   const env = options.env ?? process.env;
+  reportProgress(options, { stage: "configuration", state: "start", message: "Resolving project and registry configuration" });
   const selected = discoverProject({ cwd: options.cwd, env });
   const roots = scopes(selected, options.workspace ?? false).sort();
   const contexts = new Map(roots.map((root) => [root, root === selected.projectRoot ? selected : discoverProject({ cwd: root, env })]));
@@ -75,6 +77,8 @@ export async function createInventorySession(options: InventoryOptions = {}): Pr
     diagnostics.push(...loaded.diagnostics);
     return loaded.sources;
   });
+  reportProgress(options, { stage: "configuration", state: "complete", message: `Resolved ${roots.length} project scopes and ${sources.length} registry bindings` });
+  reportProgress(options, { stage: "discovery", state: "start", message: "Inspecting configured local directories" });
   const files = new Map<string, LocalFile>();
   const names = new Map<string, Set<string>>();
   for (const context of contexts.values()) {
@@ -88,6 +92,7 @@ export async function createInventorySession(options: InventoryOptions = {}): Pr
     }
   }
   const requested = new Map<string, Set<string>>();
+  reportProgress(options, { stage: "discovery", state: "complete", message: `Inspected ${files.size} local files` });
   for (const qualified of options.items ?? []) {
     const match = /^(@[\w-]+)\/(.+)$/.exec(qualified);
     if (!match) throw new CliError("INVALID_ARGUMENT", "Inventory item addresses must use @namespace/item syntax.");
@@ -100,6 +105,7 @@ export async function createInventorySession(options: InventoryOptions = {}): Pr
     items.add(match[2]!); requested.set(source.descriptor.id, items);
   }
   const client = new RegistryClient(options);
+  reportProgress(options, { stage: "registry", state: "start", message: "Reading configured registry catalogs", completed: 0, total: sources.length });
   const catalogs = await mapLimit(sources, concurrency, (source) => client.catalog(source));
   const entries = catalogs.flatMap((catalog) => {
     const source = sources.find(({ descriptor }) => descriptor.id === catalog.source.id)!;
@@ -133,6 +139,7 @@ export async function createInventorySession(options: InventoryOptions = {}): Pr
     }
     return entry;
   });
+  reportProgress(options, { stage: "registry", state: "complete", message: `Inspected ${items.length} item bindings; ${catalogs.filter(({status})=>status !== "ready").length} incomplete sources`, completed: sources.length, total: sources.length });
   for (const file of files.values()) {
     file.ownerCandidates.sort();
     file.origin = file.ownerCandidates.length > 1 ? "ambiguous" : file.ownerCandidates.length ? "candidate" : "unknown";

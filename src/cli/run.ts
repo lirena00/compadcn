@@ -1,6 +1,7 @@
 import { CommanderError } from "commander";
 import { createProgram } from "./create-program.js";
 import { CliError } from "../core/errors.js";
+import { CommandCancelled } from "../core/cancellation.js";
 import { packageInfo } from "../lib/packageInfo.js";
 import {
   CliOutput,
@@ -35,6 +36,11 @@ export async function runCli(argv: string[] = process.argv): Promise<number> {
           : { help: information.trimEnd() },
         information
       );
+      return 0;
+    }
+
+    if (error instanceof CommandCancelled) {
+      output.cancelled(error.message);
       return 0;
     }
 
