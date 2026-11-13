@@ -34,6 +34,7 @@ export function createProgram(options: ProgramOptions = {}): Command {
     if (command === doctorCommand || command === inventoryCommand || command === graphCommand || command === auditCommand || command === whyCommand || command === searchCommand) return;
     if (command === planCommand || command.parent === planCommand) return;
     if (command === applyCommand || command === restoreCommand || command === operationCommand) return;
+    if (command === collectionCommand || command.parent === collectionCommand) return;
     if (command === addCommand) {
       const settings=command.opts();
       if ((!process.stdin.isTTY || !process.stdout.isTTY || outputOptions.interactive===false || outputOptions.json || outputOptions.plain || process.env.TERM==="dumb") && (!settings.yes || !command.args.length)) throw new CliError("INTERACTIVE_REQUIRED","Use explicit component addresses with --yes for noninteractive add.");
@@ -44,7 +45,7 @@ export function createProgram(options: ProgramOptions = {}): Command {
       throw new CliError(
         "OUTPUT_MODE_UNSUPPORTED",
         "This legacy workflow does not support --json or --plain yet. " +
-          "Doctor, inventory, graph, audit, why, search, add, plan, apply, restore, operation, help, and version output support both modes."
+          "Doctor, inventory, graph, audit, why, search, add, plan, apply, restore, operation, collection, help, and version output support both modes."
       );
     }
 
@@ -219,6 +220,42 @@ export function createProgram(options: ProgramOptions = {}): Command {
   const operationCommand = program.command("operation <operation-id>").description("Inspect a persisted cleanup or recovery receipt without changing files")
     .option("-c, --cwd <path>", "Original project/workspace package", ".")
     .action(async (id: string, options) => { const { runOperation } = await import("./cleanup.js"); await runOperation(id, options, program.opts<OutputOptions>()); });
+
+  const collectionCommand = program.command("collection").alias("collections").description("Create, share, install, and migrate component address collections")
+    .action(() => collectionCommand.help());
+  const collectValues = (value: string, previous: string[]) => [...previous, value];
+  collectionCommand.command("create <path> [items...]").description("Create a new collection JSON file; bare item names mean @shadcn/name")
+    .option("--name <name>", "Display name (defaults to the filename)")
+    .option("--description <text>", "Collection intent/description")
+    .option("--from <path>", "Compose a base collection file (repeatable)", collectValues, [])
+    .action(async (path: string, items: string[], options) => { const { runCollectionCreate } = await import("./collection.js"); await runCollectionCreate(path, items, options, program.opts<OutputOptions>()); });
+  collectionCommand.command("show <path>").description("Read a versioned collection without contacting registries")
+    .action(async (path: string) => { const { runCollectionShow } = await import("./collection.js"); await runCollectionShow(path, program.opts<OutputOptions>()); });
+  collectionCommand.command("list [directory]").description("List collection JSON files in one directory")
+    .action(async (directory: string = "collections") => { const { runCollectionList } = await import("./collection.js"); await runCollectionList(directory, program.opts<OutputOptions>()); });
+  collectionCommand.command("install <path>").description("Install a collection through the existing multi-registry add workflow")
+    .option("-c, --cwd <path>", "Target project/workspace package", ".")
+    .option("-y, --yes", "Install the collection without a prompt")
+    .option("-o, --overwrite", "Allow upstream to overwrite observed local files")
+    .option("--refresh", "Revalidate registry metadata")
+    .option("--no-cache", "Disable persistent registry caching")
+    .option("--cache-dir <path>", "Registry metadata cache directory")
+    .option("-j, --concurrency <number>", "Maximum concurrent registry operations (1-16)", "4")
+    .option("--timeout <milliseconds>", "Timeout per registry request attempt (maximum 60000)", "10000")
+    .action(async (path: string, options) => { const { runCollectionInstall } = await import("./collection.js"); await runCollectionInstall(path, options, program.opts<OutputOptions>()); });
+  collectionCommand.command("migrate").description("Preview or explicitly import old custom presets with an unchanged original and exact backup")
+    .option("--from <path>", "Legacy storage JSON (defaults to ~/.compadcn/custom-presets.json)")
+    .option("--out <directory>", "Write collections and a backup into a new directory (omit for preview)")
+    .option("--preset <id>", "Select a legacy preset ID (repeatable)", collectValues, [])
+    .option("--map <legacy=@namespace/item>", "Explicitly resolve a legacy component value (repeatable)", collectValues, [])
+    .option("-c, --cwd <path>", "Project whose configured registries resolve bare names", ".")
+    .option("--offline", "Resolve bare names from cached catalogs")
+    .option("--refresh", "Revalidate registry metadata")
+    .option("--no-cache", "Disable persistent registry caching")
+    .option("--cache-dir <path>", "Registry metadata cache directory")
+    .option("-j, --concurrency <number>", "Maximum concurrent registry operations (1-16)", "4")
+    .option("--timeout <milliseconds>", "Timeout per registry request attempt (maximum 60000)", "10000")
+    .action(async options => { const { runCollectionMigration } = await import("./collection.js"); await runCollectionMigration(options, program.opts<OutputOptions>()); });
 
   const presetCommand = program
     .command("preset")
