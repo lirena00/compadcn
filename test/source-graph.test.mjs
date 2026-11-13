@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { join } from "node:path";
-import { symlinkSync } from "node:fs";
+import { symlinkSync, writeFileSync } from "node:fs";
 import test from "node:test";
 import { parseReferences } from "../dist/graph/references.js";
 import { sourceGraph } from "../dist/graph/source.js";
@@ -20,6 +20,24 @@ function build(root, options = {}) {
   return finishGraph(store, { scope: "installed", projectRoot: root, scopes: result.scopes, seeds: [], sources: [], registrySources: [], diagnostics: result.diagnostics,
     coverage: { inventory: true, registry: true, source: result.complete, usage: "not-analyzed" } });
 }
+
+test("Next generated route declarations are retained and hashed; local references keep ordinary safeguards", (t) => {
+  const root = project(t, { "package.json": '{"dependencies":{"next":"16"}}', "app/page.tsx": "export default function Page() {return null;}",
+    "next-env.d.ts": 'import "./.next/types/routes.d.ts";', ".next/types/package.json": '{"type":"module"}', ".next/types/routes.d.ts": 'export type Routes = "/";' });
+  const first = build(root);
+  assert.equal(first.complete, true, JSON.stringify(first.diagnostics));
+  const resource = first.nodes.find(node => node.resourceKind === "next-generated-types");
+  assert.equal(resource?.retained, true);
+  assert.deepEqual(first.scopes, [root]);
+  writeFileSync(join(root, ".next/types/routes.d.ts"), 'export type Routes = "/changed";');
+  assert.notEqual(build(root).snapshotId, first.snapshotId);
+  writeFileSync(join(root, ".next/types/routes.d.ts"), 'import "../../app/page";');
+  const custom = build(root);
+  assert.equal(custom.nodes.some(node => node.resourceKind === "next-generated-types"), false);
+  assert.ok(custom.nodes.some(node => node.path === join(root, ".next/types/routes.d.ts") && node.kind === "file"));
+  writeFileSync(join(root, ".next/types/routes.d.ts"), '/// <reference path="../../app/page.tsx" />\nexport {};');
+  assert.equal(build(root).nodes.some(node => node.resourceKind === "next-generated-types"), false);
+});
 
 test("AST references distinguish import forms, type phases and source locations", () => {
   const parsed = parseReferences("fixture.tsx", [
