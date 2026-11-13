@@ -3,17 +3,17 @@
 A CLI for installing and managing shadcn/ui components and presets, formerly named compadcn.
 
 V2 is under development. This checkout includes multi-registry search and
-installation, dependency graphs, read-only usage audits, and exact cleanup plans
-alongside the existing cleanup and preset commands. Plan application and recovery
-are the next implementation unit.
+installation, dependency graphs, read-only usage audits, exact cleanup plans,
+bounded plan application, and conflict-aware recovery alongside the legacy
+cleanup and preset commands.
 
 ## Features
 
-- **Easy component installation** - Add ShadCN components with a single command
-- **Smart linting** - Find and remove unused components from your project
-- **Import cleanup** - Automatically removes imports when components are deleted
-- **Dependency removal** - Optionally remove unused dependencies when components are deleted
-- **Custom presets** - Create and save your own component collections
+- **Registry management** - Search, install, and inventory official/custom/private items
+- **Usage analysis** - Inspect dependency graphs and explain runtime/development use
+- **Reviewed cleanup** - Preview exact changes and retain uncertain/shared resources
+- **Verification and recovery** - Apply checked plans with backups and conflict-aware restore
+- **Existing presets** - Create, inspect, and install component collections
 
 ## Local development
 
@@ -41,19 +41,20 @@ immediately. JSON responses contain `schemaVersion`, `toolVersion`, `status`, an
 either `data` or `error`. Plain CLI errors go to stderr; JSON errors are returned
 as one structured response on stdout. Parser/runner errors return exit code `2`.
 
-Doctor, inventory, graph, audit, why, search, add, plan, help, version, and CLI errors
-support these output modes. Add requires explicit addresses and `--yes` outside an
-interactive terminal. Legacy lint/remove and preset workflows do not yet support
+Doctor, inventory, graph, audit, why, search, add, plan, apply, restore, operation,
+help, version, and CLI errors support these output modes. Add requires explicit
+addresses and `--yes` outside an interactive terminal. Apply and restore also
+require `--yes` outside an interactive terminal. Legacy lint/remove and preset workflows do not yet support
 `--json` or `--plain`; they return
 `OUTPUT_MODE_UNSUPPORTED` instead of mixing terminal text with machine output.
 Workflows requiring prompts fail with `INTERACTIVE_REQUIRED` when no interactive
 terminal is available or `--no-interactive` is set. `preset list` and `preset show`
 remain available without prompts. Legacy workflows return nonzero exit codes for
 validation, filesystem, and subprocess failures; cancellation remains a normal
-outcome. Legacy file cleanup is still non-transactional; the new planner does not
-execute cleanup operations.
+outcome. Legacy file cleanup is still non-transactional. Use the new plan/apply
+workflow for checked file deletion with backups and recovery.
 
-Inventory, graph, audit/why, search, add, and plan share one task display. Progress is
+Inventory, graph, audit/why, search, add, plan, apply, and restore share one task display. Progress is
 automatic in an interactive terminal; `--progress` opts into append-only stderr
 stages when output is plain or JSON, and `--no-progress` disables it. JSON stdout
 remains one envelope. Task stages include actual catalog status/cache results,
@@ -98,7 +99,7 @@ Doctor selects the nearest `package.json` from the chosen directory, stopping at
 the Git/worktree boundary. At a workspace root, select the intended app/package
 with `doctor --cwd`; it does not choose an app automatically. `--cwd` currently
 is available on `doctor`, `inventory`, `graph`, `audit`, `why`, `search`, `add`, and
-the `plan` subcommands.
+the `plan` subcommands, `apply`, `restore`, and `operation`.
 
 It reports the framework inferred from dependencies, conventional source folders,
 package manager and its metadata location, workspace members, compiler configs,
@@ -193,8 +194,8 @@ limits preserve incomplete coverage rather than reporting an empty clean invento
 
 The API exposes `await buildInventory({ cwd, offline, cacheDir, items })`. Inventory
 is read-only with respect to project files; its metadata cache is the only write.
-Legacy preset/lint/remove commands keep their existing behavior. Cleanup plan
-application follows in a separate implementation unit.
+Legacy preset/lint/remove commands keep their existing behavior. The new
+plan/apply workflow uses the shared inventory, graph, and audit services.
 
 ### `shadcn-plus graph`
 
@@ -410,7 +411,8 @@ workspace, including consumers, compiler/framework configuration, manifests, and
 lockfiles. Resolved compiler settings also have a fingerprint, including inherited
 configuration. Added, removed, changed, or linked inputs invalidate a saved plan;
 changes detected during planning produce a blocked proposal. Generated/dependency
-directories and `.shadcn-plus` are excluded. A reference that relies on an excluded
+directories, `.shadcn-plus`, TypeScript `.tsbuildinfo`, and lint cache files
+(`.eslintcache`/`.stylelintcache`) are excluded. A reference that relies on an excluded
 input prevents a ready plan. Source/configuration symlinks and deletion targets
 with multiple hard links remain unsupported. Plans are bound to the creating
 workspace location and selected package; choose the same `--cwd` for checking.
@@ -435,7 +437,7 @@ Planning uses audit's entry/cache/request/analysis flags. `--max-input-files`
 defaults to 50,000 (maximum 100,000), and `--max-input-bytes` defaults to 256 MiB
 (maximum 1 GiB). Previews are limited to 2 MiB per file, 2,000 deletion operations,
 and 8 MiB of combined diff text. Hitting a limit retains affected items or blocks
-incomplete input coverage. Default future verification descriptors cover package
+incomplete input coverage. Default verification descriptors cover package
 scripts `typecheck`, `lint`, and `build`; missing scripts are `not-configured`, not
 a pass. Repeated `--verify-script <name>` requires selected scripts and blocks a
 plan if one is missing. Planning and checking never run these scripts.
@@ -443,8 +445,113 @@ plan if one is missing. Planning and checking never run these scripts.
 The lazy API exposes `createOwnershipSnapshot`, `createCleanupPlan`,
 `checkCleanupPlan`, `parseCleanupPlan`, and `parseOwnershipSnapshot`. Parsing and
 checking validate strict versioned schemas, integrity, paths, operation ownership,
-and preview bytes. This unit adds no `apply` or `restore` command; application,
-verification execution, backups, and recovery follow next.
+and preview bytes. Use `apply` to execute a ready plan.
+
+### `shadcn-plus apply`, `operation`, and `restore`
+
+```bash
+# Revalidate and apply the exact saved plan, then run its configured checks.
+shadcn-plus apply --plan .shadcn-plus/plans/cleanup.json --yes --json
+
+# Also establish a passing baseline before deleting files.
+shadcn-plus apply --plan .shadcn-plus/plans/cleanup.json --yes --precheck --json
+
+# Inspect a returned operation ID without changing files or fetching registries.
+shadcn-plus operation <operation-id> --json
+
+# Restore this operation's missing files without overwriting replacements.
+shadcn-plus restore <operation-id> --yes --json
+
+# Recover a lock left by this operation's stopped process on this host.
+shadcn-plus restore <operation-id> --yes --recover-lock --json
+```
+
+Apply accepts only a ready plan from the same tool version, workspace location,
+and selected package. It acquires a workspace cleanup lock and records the
+operation before awaiting revalidation. It then reruns `plan check`, validates
+ownership and remaining consumers, and compares the exact complete input scope.
+`--yes` accepts the reviewed operation; it does not waive a stale plan or expand
+its targets. Official, custom, and private registry items follow this same path.
+
+Every target is backed up before any deletion. The saved plan, raw backup bytes,
+timestamps, permissions, and hash-chained append-only journal live under
+`.shadcn-plus/operations/<operation-id>`. Backup and journal writes are flushed
+before source mutations; deletion intent is recorded before unlinking each file.
+Targets are checked again immediately before deletion. The whole input scope is
+checked after deletions and after verification; unexpected changes cause recovery
+of this operation's files. Dirty repositories are supported, and the Git index is
+left intact. Application does not rewrite imports, uninstall dependencies, update
+lockfiles, or remove shared CSS/theme/configuration resources.
+
+All configured checks from the plan run sequentially in the selected package via
+its package manager. `--verify` is accepted for clarity; configured checks always
+run, and there is no verification bypass. Their script hashes are checked again
+before launching. Missing default scripts remain `not-configured`, and later
+checks become `not-run` after a required failure. An operation marked `completed`
+can have no configured checks: that is not a verified build. `--precheck` also
+runs the checks before mutation and stops with `precheck-failed` on an existing
+failure. Without a before-check, a post-check failure has no established baseline.
+
+`--verification-timeout` defaults to 120,000 ms per script, up to 1,800,000 ms.
+Verification uses ignored stdin and a noninteractive environment. Subprocess
+output is discarded to avoid mixing logs or credentials into JSON and journals;
+receipts record script names, phase, status, duration, and exit codes. Rerun a
+failed package script directly to inspect its output. Timeout/cancellation stops
+the verification process tree before attempting recovery. Windows uses Windows
+PowerShell/CIM to track descendants across wrapper exits; POSIX uses a dedicated
+process group. If shutdown cannot be confirmed, `VERIFICATION_TERMINATION_UNCONFIRMED`
+leaves the operation `recovery-required` without automatic restoration. Stop the
+remaining check processes before calling `restore`. Registry/cache/request
+and analysis timeout flags match `plan check`; `--offline` requires usable cached
+metadata for fresh revalidation.
+
+On a filesystem failure, changed scope, failed check, or interruption after
+mutation, automatic recovery considers only paths with a recorded deletion intent.
+Missing paths can be recreated from hash-checked backups with their saved mode and
+timestamps. Existing files with original bytes and permissions are accepted as
+already recovered. Different files, linked parents, damaged backups, and changed
+permissions become explicit conflicts and are preserved. Recovery stages complete
+bytes and uses an exclusive hard link to avoid replacing a concurrently recreated
+target. A completed staging/link step can be finished after interruption; a partial
+or changed staging file remains a conflict for inspection.
+
+`operation` reads persisted receipts without taking a mutation lock, running
+scripts, or contacting registries. It reports planned paths, attempted deletions,
+recorded deletions, recovered paths, conflicts, and verification outcomes. An
+`interrupted` status means the journal has no terminal record; its owner might
+still be running. `restore` requires no healthy current configuration or registry
+access. It is idempotent while original files remain unchanged. Once recovery
+starts, it finishes its bounded recovery pass rather than stopping midway on
+cancellation. An incomplete final journal record is archived before recovery;
+invalid complete records prevent automatic recovery.
+
+Live locks cannot be stolen. Lock errors include the owning operation ID when
+available. `--recover-lock` accepts only a matching operation whose same-host
+process is provably stopped; foreign-host locks, reused/live PIDs, malformed locks,
+and interrupted lock-recovery guards require inspection. An abrupt stop while the
+initial journal or lock is being created may also require inspecting state before
+clearing a lock. Keep the operation directory until recovery is finished.
+
+These operations target local filesystems with exclusive creation and hard-link
+support. They do not provide a cross-file atomic transaction, isolation from
+arbitrary external writers, or universal power-loss durability. The implementation
+checks real paths and file identities, but Node's portable APIs cannot make a
+content comparison and path unlink one atomic operation. Network filesystem lock
+semantics are unsupported; see [Node's file-system flags documentation](https://nodejs.org/docs/latest-v22.x/api/fs.html#file-system-flags).
+Verification scripts can change other files or external state; those effects are
+not backed up or rolled back. Backups contain original source code and stay local;
+exclude `.shadcn-plus/` from version control. No retention cleanup runs automatically.
+
+JSON success returns `data.operation`. Outcomes `rolled-back`, `precheck-failed`,
+and `recovery-required` exit `2`, using `CLEANUP_ROLLED_BACK`,
+`CLEANUP_PRECHECK_FAILED`, or `CLEANUP_RECOVERY_REQUIRED`, with the receipt under
+`error.details.operation`. Stale plans use `PLAN_STALE` with a `rejected` receipt.
+Cancellation during revalidation exits normally with its operation ID and a
+persisted `cancelled` receipt. Cancellation after mutation returns its recovery
+outcome instead of reporting that nothing happened. Plain failures use stderr;
+JSON stdout remains one response. Journals are versioned and limited to 16 MiB;
+saved plans are limited to 64 MiB. The lazy API exposes `applyCleanupPlan`,
+`inspectCleanupOperation`, and `restoreCleanupOperation`.
 
 ### `shadcn-plus search [query]`
 
