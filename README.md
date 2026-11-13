@@ -2,9 +2,10 @@
 
 A CLI for installing and managing shadcn/ui components and presets, formerly named compadcn.
 
-V2 is under development. This checkout includes multi-registry inventory, dependency
-graphs, and read-only usage audits alongside the existing component and preset
-commands. Ownership adoption and cleanup plans are still being implemented.
+V2 is under development. This checkout includes multi-registry search and
+installation, dependency graphs, and read-only usage audits alongside the existing
+cleanup and preset commands. Ownership adoption and cleanup plans are still being
+implemented.
 
 ## Features
 
@@ -40,14 +41,32 @@ immediately. JSON responses contain `schemaVersion`, `toolVersion`, `status`, an
 either `data` or `error`. Plain CLI errors go to stderr; JSON errors are returned
 as one structured response on stdout. Parser/runner errors return exit code `2`.
 
-Doctor, inventory, graph, audit, why, help, version, and CLI errors support these output modes. Existing component and
-preset workflows do not yet support `--json` or `--plain`; they return
+Doctor, inventory, graph, audit, why, search, add, help, version, and CLI errors
+support these output modes. Add requires explicit addresses and `--yes` outside an
+interactive terminal. Legacy lint/remove and preset workflows do not yet support
+`--json` or `--plain`; they return
 `OUTPUT_MODE_UNSUPPORTED` instead of mixing terminal text with machine output.
 Workflows requiring prompts fail with `INTERACTIVE_REQUIRED` when no interactive
 terminal is available or `--no-interactive` is set. `preset list` and `preset show`
 remain available without prompts. Legacy workflows return nonzero exit codes for
 validation, filesystem, and subprocess failures; cancellation remains a normal
 outcome. File cleanup is still non-transactional until plan/apply is implemented.
+
+Inventory, graph, audit/why, search, and add share one task display. Progress is
+automatic in an interactive terminal; `--progress` opts into append-only stderr
+stages when output is plain or JSON, and `--no-progress` disables it. JSON stdout
+remains one envelope. Task stages include actual catalog status/cache results,
+source discovery, analysis passes, and file verification; unknown-duration work
+uses elapsed time rather than percentages. Progress callbacks are available to API
+callers as `onProgress(event)` without loading terminal rendering.
+
+`TERM=dumb` uses plain output. `NO_COLOR` is respected, and `ACCESSIBLE=1` enables
+Clack's static prompt output with append-only task feedback. Pickers have bounded
+visible rows, keyboard hints, and a selected count. Escape/Ctrl+C before installation
+returns exit `0` with JSON `status: "cancelled"` or a plain cancellation message.
+Signals abort in-flight registry/analysis work. Interrupting a started installer
+returns exit `2` with `INSTALL_INTERRUPTED`: files may already have changed.
+Windows cancellation also terminates the package-manager wrapper's descendants.
 
 ## Installation
 
@@ -77,7 +96,7 @@ shadcn-plus --plain doctor --cwd ./src/features
 Doctor selects the nearest `package.json` from the chosen directory, stopping at
 the Git/worktree boundary. At a workspace root, select the intended app/package
 with `doctor --cwd`; it does not choose an app automatically. `--cwd` currently
-is available on `doctor`, `inventory`, `graph`, `audit`, and `why`.
+is available on `doctor`, `inventory`, `graph`, `audit`, `why`, `search`, and `add`.
 
 It reports the framework inferred from dependencies, conventional source folders,
 package manager and its metadata location, workspace members, compiler configs,
@@ -172,7 +191,7 @@ limits preserve incomplete coverage rather than reporting an empty clean invento
 
 The API exposes `await buildInventory({ cwd, offline, cacheDir, items })`. Inventory
 is read-only with respect to project files; its metadata cache is the only write.
-Legacy add/preset/lint/remove commands keep their existing behavior. Ownership
+Legacy preset/lint/remove commands keep their existing behavior. Ownership
 adoption and cleanup plans follow in separate implementation units.
 
 ### `shadcn-plus graph`
@@ -329,17 +348,84 @@ TypeScript, or the HTML parser. MDX/Vue/Svelte, computed references, unresolved
 aliases, and unsupported configuration retain the graph's coverage limitations.
 No performance or token-saving claim is inferred from these measurements.
 
-### `shadcn-plus add [components...]`
+### `shadcn-plus search [query]`
 
-Add ShadCN components to your project.
+Search the inventory's combined catalogs without installing anything:
 
 ```bash
-# Interactive mode - select components from a non installed components list
-shadcn-plus add
-
-# Add specific components
-shadcn-plus add button card dialog
+shadcn-plus search dialog
+shadcn-plus search 'account menu' --registry @company --type ui --json
+shadcn-plus search --presence present --workspace --json
+shadcn-plus search --offline --limit 100 --plain
+shadcn-plus search --item @private/known-component --json
 ```
+
+Results preserve namespace and workspace identity when names collide. Search
+matches all query words across qualified addresses, descriptions, titles, types,
+and local presence. Repeated `--registry` and `--type` filters narrow the result;
+type names accept `ui` or `registry:ui`. `--presence` accepts `any`, `present`,
+`partial`, `absent`, or `unknown`. Presence refers to observed destination files,
+not proven installation history. Default output shows 50 matches; `--limit 1-1000`
+controls that projection and reports omitted counts.
+
+Registry request/cache options match inventory. Healthy or stale entries remain
+visible when a source fails. Incomplete search exits `2` with `CATALOG_INCOMPLETE`
+and the report in `error.details.catalog`; complete results are under `data`.
+Catalog-less sources can be inspected using repeated `--item @namespace/name`.
+The lazy API exposes `searchCatalog(options)` and the pure `createCatalogIndex`
+and `searchInventory` helpers for reuse of an existing inventory snapshot.
+
+### `shadcn-plus add [components...]`
+
+Open a searchable picker over configured catalogs, or supply explicit addresses:
+
+```bash
+shadcn-plus add --cwd ./apps/web
+shadcn-plus add --registry @company --type block
+shadcn-plus add --query dialog
+shadcn-plus add button @company/user-menu
+shadcn-plus add @company/user-menu --yes --json
+shadcn-plus add button --overwrite --yes --plain
+```
+
+The picker uses pinned Clack 1.9.0. It searches precomputed local text over a single
+inventory snapshot; keystrokes do not scan files or fetch catalogs. Type to filter,
+use arrows to navigate, Tab to toggle a row (Space also works while navigating),
+and Enter to review all selected items, including selections hidden by a query.
+There is no select-all shortcut. Rows show qualified names and local presence;
+focused hints include descriptions/types. Source status is displayed before the
+picker, and healthy sources remain usable when another registry fails.
+
+Picker filters apply before interactive text search. Local-file-present choices
+are disabled unless `--overwrite` is set. An all-present/unavailable result reports
+a clear empty state instead of an empty success. A single review shows the selected
+items, file counts, shared-effect counts, overwrite policy, package manager, and
+target project. `--yes` skips that review for explicit selections; noninteractive
+add requires both `--yes` and component addresses.
+
+Bare names resolve to the selected package's `@shadcn` source. Qualified names keep
+their configured registry binding; the static legacy component list is not used
+for add. Known items from catalog-less sources can be supplied explicitly. Add
+targets one `--cwd` package; use `search --workspace` to browse other packages and
+select their directory with `--cwd` when installing there. Selected manifests must
+have fresh usable metadata and resolved file destinations. Style/theme/base-only
+operations are delegated to their upstream workflows.
+
+Installation runs pinned `shadcn@4.23.0` through the project's npm/pnpm/Yarn/Bun
+launcher, using one qualified selection and upstream `--yes` after the review.
+Existing complete local footprints are skipped unless overwrite is requested.
+Interactive installer output remains live; plain/JSON installs suppress upstream
+terminal output so the result contract stays clean. A failed installer returns
+`INSTALL_FAILED`. Even after exit `0`, missing expected selected files return
+`INSTALL_VERIFICATION_FAILED`. Successful results include added/skipped addresses
+and the number of verified destinations.
+
+The upstream installer manages dependency closure and shared configuration.
+Verification checks selected file presence; it does not establish transformed
+content provenance, verify every dependency/shared effect, or provide rollback.
+Project configuration changes during selection stop installation with
+`PROJECT_CHANGED`. Preset installation retains its legacy runner until collections
+and migration are implemented.
 
 ### `shadcn-plus remove [components...]`
 
