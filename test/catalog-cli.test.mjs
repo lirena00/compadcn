@@ -8,7 +8,6 @@ import test from "node:test";
 import { createProject } from "../fixtures/cli/project-fixture.mjs";
 import { stubPackageManagers } from "../fixtures/cli/package-manager-stubs.mjs";
 import { registryServer, json, catalog } from "../fixtures/registry/server.mjs";
-import { installInvocation } from "../dist/install/runner.js";
 
 const execute=promisify(execFile);
 const cli=fileURLToPath(new URL("../dist/cli.js",import.meta.url));
@@ -16,6 +15,8 @@ const blocker=new URL("../fixtures/cli/register-block-workflows.mjs",import.meta
 const analysisBlocker=new URL("../fixtures/cli/register-block-analysis.mjs",import.meta.url).href;
 const terminal=new URL("../fixtures/cli/simulate-terminal.mjs",import.meta.url).href;
 const content="export const Value=1;";
+const metadata=JSON.parse(readFileSync(new URL("../package.json",import.meta.url),"utf8"));
+const launchers={npm:{command:"npx",prefix:["--yes"]},pnpm:{command:"pnpm",prefix:["dlx"]},yarn:{command:"yarn",prefix:["dlx"]},bun:{command:"bunx",prefix:["--bun"]}};
 const item=(name,custom=false)=>({name,type:"registry:ui",description:"Dialog and menu primitives",files:[{path:`ui/${name}.tsx`,type:"registry:ui",content,...(custom&&name==="dialog"?{target:"~/private/dialog.tsx"}:{})}]});
 
 async function fixture(t,{broken=false,files={},manager="npm"}={}){
@@ -95,7 +96,8 @@ for(const manager of ["npm","pnpm","yarn","bun"]){
     const report=JSON.parse(result.stdout).data;
     assert.deepEqual(report.installed,["@company/dialog"]);assert.equal(report.verifiedFiles,1);
     const invocation=JSON.parse(readFileSync(env.SHADCN_PLUS_ARGS_FILE,"utf8"));
-    assert.deepEqual({command:invocation.command,args:invocation.args},installInvocation(manager,["@company/dialog"]));
+    assert.equal(invocation.command,launchers[manager].command);
+    assert.deepEqual(invocation.args,[...launchers[manager].prefix,`shadcn@${metadata.dependencies.shadcn}`,"add","--yes","--","@company/dialog"]);
     assert.equal(invocation.cwd,root);assert.equal(readFileSync(join(root,"ui/dialog.tsx"),"utf8"),content);
     assert.doesNotMatch(result.stdout,/Simulated package-manager output/);
   });
