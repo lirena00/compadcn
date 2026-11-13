@@ -56,6 +56,7 @@
     "@clack/prompts": "^1.9.0",
     "chalk": "^5.4.1",
     "commander": "^14.0.0",
+    "diff": "9.0.0",
     "execa": "^9.6.0",
     "get-tsconfig": "^4.14.3",
     "jsonc-parser": "^3.3.1",
@@ -64,6 +65,7 @@
     "shadcn": "4.23.0",
     "tinyglobby": "^0.2.17",
     "typescript": "5.8.3",
-    "yaml": "^2.9.1"
+    "yaml": "^2.9.1",
+    "zod": "4.6.7"
   }
 }
