@@ -1,4 +1,4 @@
-export type TaskStage = "configuration" | "discovery" | "registry" | "graph" | "roots" | "analysis-all" | "analysis-production" | "classification" | "install" | "verification";
+export type TaskStage = "configuration" | "discovery" | "registry" | "graph" | "roots" | "analysis-all" | "analysis-production" | "classification" | "install" | "verification" | "planning" | "snapshot";
 
 export interface TaskEvent {
   stage: TaskStage;

@@ -8,7 +8,7 @@ import { digest } from "../registry/source.js";
 import type { RemoteFile } from "../registry/types.js";
 import type { ItemFile, LocalFile } from "./types.js";
 
-const ignored = ["node_modules", ".git", ".next", ".turbo", "dist", "build", "coverage", ".cache"].map((name) => `**/${name}/**`);
+const ignored = ["node_modules", ".git", ".next", ".turbo", "dist", "build", "coverage", ".cache", ".shadcn-plus"].map((name) => `**/${name}/**`);
 
 function directoryExists(path: string): boolean {
   try { return statSync(path).isDirectory(); } catch (error) {

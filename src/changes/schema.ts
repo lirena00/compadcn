@@ -73,7 +73,11 @@ function checked<T extends { id: string; toolVersion: string }>(value: unknown, 
   return parsed.data;
 }
 
-export const parseOwnershipSnapshot = (value: unknown): OwnershipSnapshot => checked(value, ownershipSnapshotSchema, "OWNERSHIP");
+export function parseOwnershipSnapshot(value: unknown): OwnershipSnapshot {
+  const snapshot=checked(value,ownershipSnapshotSchema,"OWNERSHIP");
+  if(new Set(snapshot.items.map(({id})=>id)).size!==snapshot.items.length||snapshot.items.some((item)=>new Set(item.files.map(({path})=>path)).size!==item.files.length||new Set(item.origins.map(({nodeId})=>nodeId)).size!==item.origins.length))throw new CliError("OWNERSHIP_DUPLICATE","Ownership snapshot contains duplicate mappings.");
+  return snapshot;
+}
 export function parseCleanupPlan(value: unknown): CleanupPlan {
   const plan = checked(value, cleanupPlanSchema, "PLAN");
   const { fingerprint, snapshotVersion: _version, complete: _complete, diagnostics: _diagnostics, ...inputs } = plan.inputs;
@@ -84,13 +88,16 @@ export function parseCleanupPlan(value: unknown): CleanupPlan {
   for (const operation of plan.operations) {
     const file = files.get(operation.path);
     const {id, ...body} = operation;
-    if (id !== digest(canonicalJSON(body)) || !file || file.kind !== "file" || file.links !== 1 || file.sha256 !== operation.before.sha256 || file.bytes !== operation.before.bytes || file.mode !== operation.before.mode || !operation.owners.length || operation.owners.some((owner)=>!selected.get(owner)?.paths.includes(operation.path))) throw new CliError("PLAN_OPERATION_INVALID", "Operation is inconsistent with its owners or input preconditions.");
+    if (id !== digest(canonicalJSON(body)) || !file || file.kind !== "file" || file.links !== 1 || file.sha256 !== operation.before.sha256 || file.bytes !== operation.before.bytes || file.mode !== operation.before.mode || !operation.owners.length || operation.owners.some((owner)=>!selected.get(owner)?.paths.includes(operation.path)) ||
+      !/\.(?:[cm]?[jt]sx?)$/.test(operation.path) || (plan.project.selected!=="."&&!operation.path.startsWith(`${plan.project.selected}/`))) throw new CliError("PLAN_OPERATION_INVALID", "Operation is inconsistent with its owners, project scope, or input preconditions.");
     validateDeletionDiff(operation.path,operation.diff,operation.before.sha256,operation.before.bytes);
   }
   const operations = new Map(plan.operations.map((operation)=>[operation.path,operation]));
   if (plan.selected.some((target)=>target.paths.some((path)=>!operations.get(path)?.owners.includes(target.id)))) throw new CliError("PLAN_OPERATION_INVALID", "A selected target has an incomplete deletion set.");
   if (plan.status === "ready" && (!plan.complete || !plan.operations.length || !plan.inputs.complete || Object.values(plan.analysis.coverage).some((value)=>!value))) throw new CliError("PLAN_STATUS_INVALID", "A ready plan must have complete coverage and explicit operations.");
   if (plan.status !== "ready" && plan.operations.length) throw new CliError("PLAN_STATUS_INVALID", "A blocked or empty plan cannot contain executable operations.");
+  if(plan.verification.some((step)=>canonicalJSON(step.args)!==canonicalJSON(["run",step.script])||(step.status==="configured")!==!!step.scriptHash))throw new CliError("PLAN_VERIFICATION_INVALID","Verification descriptors must reference package scripts exactly.");
+  if(plan.status==="ready"&&plan.verification.some((step)=>step.required&&step.status!=="configured"))throw new CliError("PLAN_STATUS_INVALID","A ready plan cannot omit an explicitly required verification script.");
   if (plan.ownership) parseOwnershipSnapshot(plan.ownership);
   return plan;
 }
