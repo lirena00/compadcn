@@ -24,6 +24,10 @@ export type { UsageProof } from "./analysis/reachability.js";
 export { createCatalogIndex, searchInventory } from "./catalog/model.js";
 export type { CatalogEntry, CatalogFilters, CatalogSearchReport } from "./catalog/model.js";
 export type { SearchOptions } from "./catalog/search.js";
+export type { CleanupPlan, CleanupOperation, OwnershipSnapshot, ScopeSnapshot } from "./changes/schema.js";
+export type { CleanupPlanOptions } from "./changes/build.js";
+export type { OwnershipOptions } from "./changes/ownership.js";
+export type { PlanCheckResult } from "./changes/check.js";
 
 // Keep importing the API and constructing/helping the CLI free of filesystem scans.
 export async function discoverProject(
@@ -56,4 +60,24 @@ export async function auditProject(
 
 export async function searchCatalog(options:import("./catalog/search.js").SearchOptions={}):Promise<import("./catalog/model.js").CatalogSearchReport> {
   return (await import("./catalog/search.js")).searchCatalog(options);
+}
+
+export async function createCleanupPlan(options:import("./changes/build.js").CleanupPlanOptions={}):Promise<import("./changes/schema.js").CleanupPlan> {
+  return (await import("./changes/build.js")).createCleanupPlan(options);
+}
+
+export async function createOwnershipSnapshot(options:import("./changes/ownership.js").OwnershipOptions={}):Promise<import("./changes/schema.js").OwnershipSnapshot> {
+  return (await import("./changes/ownership.js")).createOwnershipSnapshot(options);
+}
+
+export async function checkCleanupPlan(plan:unknown,options:import("./changes/build.js").CleanupPlanOptions={}):Promise<import("./changes/check.js").PlanCheckResult> {
+  return (await import("./changes/check.js")).checkCleanupPlan(plan,options);
+}
+
+export async function parseCleanupPlan(value:unknown):Promise<import("./changes/schema.js").CleanupPlan> {
+  return (await import("./changes/schema.js")).parseCleanupPlan(value);
+}
+
+export async function parseOwnershipSnapshot(value:unknown):Promise<import("./changes/schema.js").OwnershipSnapshot> {
+  return (await import("./changes/schema.js")).parseOwnershipSnapshot(value);
 }

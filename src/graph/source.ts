@@ -9,7 +9,7 @@ import { fileId, GraphStore, nodeId } from "./model.js";
 import { parseReferences } from "./references.js";
 import { ReferenceResolver } from "./resolve.js";
 
-const excluded = ["node_modules", ".git", ".next", ".turbo", "dist", "build", "coverage", ".cache"].map((name) => `**/${name}/**`);
+const excluded = ["node_modules", ".git", ".next", ".turbo", "dist", "build", "coverage", ".cache", ".shadcn-plus"].map((name) => `**/${name}/**`);
 const sourcePattern = /\.(?:[cm]?[jt]sx?|mdx|vue|svelte)$/;
 const supported = /\.(?:[cm]?[jt]sx?)$/;
 

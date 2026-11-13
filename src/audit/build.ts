@@ -13,6 +13,10 @@ import { reportProgress } from "../core/progress.js";
 export interface AuditOptions extends Omit<GraphOptions, "scope" | "items">, AnalysisOptions { entries?: string[]; devEntries?: string[] }
 
 export async function auditProject(options: AuditOptions = {}): Promise<AuditReport> {
+  return (await createAuditSession(options)).report;
+}
+
+export async function createAuditSession(options: AuditOptions = {}) {
   validateAnalysisOptions(options);
   const project = discoverProject({ cwd: options.cwd, env: options.env });
   const workspace = options.workspace ?? !!project.workspace;
@@ -31,7 +35,7 @@ export async function auditProject(options: AuditOptions = {}): Promise<AuditRep
     ...classified.files.filter(({ reasons }) => reasons.includes("ANALYZER_DISAGREEMENT")).map(({ path }) => ({ code: "ANALYZER_DISAGREEMENT", severity: "error" as const, message: "Usage analysis and the reference index disagree; retain this file.", path }))];
   const coverage = { graph: graph.complete, roots: roots.complete, analyzer: analysis.complete, workspace: workspaceComplete };
   const stable = { graphSnapshotId: graph.snapshotId, roots: roots.roots, items: classified.items, files: classified.files, packages, coverage, diagnostics, configFingerprint: analysis.configFingerprint };
-  return {
+  const report: AuditReport = {
     auditVersion: 1, snapshotId: digest(canonicalJSON(stable)), graphSnapshotId: graph.snapshotId, projectRoot: project.projectRoot, analysisRoot: roots.analysisRoot, scopes: graph.scopes,
     items: classified.items, files: classified.files, packages, roots: roots.roots,
     counts: { totalItems: classified.items.length, runtime: classified.items.filter(({ usage }) => usage === "runtime").length,
@@ -42,4 +46,5 @@ export async function auditProject(options: AuditOptions = {}): Promise<AuditRep
       allUnusedFiles: analysis.all.unusedFiles.length, productionUnusedFiles: analysis.production.unusedFiles.length },
     coverage, diagnostics, complete: Object.values(coverage).every(Boolean) && !diagnostics.some(({ severity }) => severity === "error"),
   };
+  return { report, graph, project, roots };
 }
