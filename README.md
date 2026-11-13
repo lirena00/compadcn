@@ -4,8 +4,8 @@ A CLI for installing and managing shadcn/ui components and presets, formerly nam
 
 V2 is under development. This checkout includes multi-registry search and
 installation, dependency graphs, read-only usage audits, exact cleanup plans,
-bounded plan application, and conflict-aware recovery alongside the legacy
-cleanup and preset commands.
+bounded plan application, conflict-aware recovery, and shareable component
+collections with explicit legacy preset migration.
 
 ## Features
 
@@ -13,7 +13,7 @@ cleanup and preset commands.
 - **Usage analysis** - Inspect dependency graphs and explain runtime/development use
 - **Reviewed cleanup** - Preview exact changes and retain uncertain/shared resources
 - **Verification and recovery** - Apply checked plans with backups and conflict-aware restore
-- **Existing presets** - Create, inspect, and install component collections
+- **Collections** - Share qualified component selections and explicitly migrate old presets
 
 ## Local development
 
@@ -42,7 +42,7 @@ either `data` or `error`. Plain CLI errors go to stderr; JSON errors are returne
 as one structured response on stdout. Parser/runner errors return exit code `2`.
 
 Doctor, inventory, graph, audit, why, search, add, plan, apply, restore, operation,
-help, version, and CLI errors support these output modes. Add requires explicit
+collection, help, version, and CLI errors support these output modes. Add requires explicit
 addresses and `--yes` outside an interactive terminal. Apply and restore also
 require `--yes` outside an interactive terminal. Legacy lint/remove and preset workflows do not yet support
 `--json` or `--plain`; they return
@@ -54,7 +54,7 @@ validation, filesystem, and subprocess failures; cancellation remains a normal
 outcome. Legacy file cleanup is still non-transactional. Use the new plan/apply
 workflow for checked file deletion with backups and recovery.
 
-Inventory, graph, audit/why, search, add, plan, apply, and restore share one task display. Progress is
+Inventory, graph, audit/why, search, add, plan, apply, restore, and collection migration/install share one task display. Progress is
 automatic in an interactive terminal; `--progress` opts into append-only stderr
 stages when output is plain or JSON, and `--no-progress` disables it. JSON stdout
 remains one envelope. Task stages include actual catalog status/cache results,
@@ -99,7 +99,7 @@ Doctor selects the nearest `package.json` from the chosen directory, stopping at
 the Git/worktree boundary. At a workspace root, select the intended app/package
 with `doctor --cwd`; it does not choose an app automatically. `--cwd` currently
 is available on `doctor`, `inventory`, `graph`, `audit`, `why`, `search`, `add`, and
-the `plan` subcommands, `apply`, `restore`, and `operation`.
+the `plan` subcommands, `apply`, `restore`, `operation`, and collection install/migration.
 
 It reports the framework inferred from dependencies, conventional source folders,
 package manager and its metadata location, workspace members, compiler configs,
@@ -629,8 +629,111 @@ The upstream installer manages dependency closure and shared configuration.
 Verification checks selected file presence; it does not establish transformed
 content provenance, verify every dependency/shared effect, or provide rollback.
 Project configuration changes during selection stop installation with
-`PROJECT_CHANGED`. Preset installation retains its legacy runner until collections
-and migration are implemented.
+`PROJECT_CHANGED`. Collection installation uses this same workflow. Legacy preset
+installation retains its old runner; explicitly migrate presets into collection
+files to use the current multi-registry installation path.
+
+### `shadcn-plus collection`
+
+Collections are portable JSON files containing component addresses and intent.
+They describe what to install, independently of what is currently installed.
+Counts come from their item lists; dependency declarations come from current
+registries during installation.
+
+```json
+{
+  "collectionVersion": 1,
+  "name": "Dashboard",
+  "description": "Shared controls for the customer dashboard",
+  "items": ["@shadcn/button", "@company/chart"]
+}
+```
+
+```bash
+shadcn-plus collection create collections/base.json button @company/chart --name "Dashboard"
+shadcn-plus collection create collections/app.json @shadcn/card --from collections/base.json
+shadcn-plus collection list collections --json
+shadcn-plus collection show collections/app.json --json
+shadcn-plus collection install collections/app.json --cwd ./my-app --yes --json
+```
+
+`collections` is also accepted as a command alias. Create/show/list work without
+a project or registry requests. Creation qualifies bare names as `@shadcn/name`;
+saved files require qualified addresses. Repeated `--from` materializes composed
+items, preserving first-seen order and removing duplicate addresses. Different
+namespaces remain distinct. Composition does not create a live inheritance chain.
+Use `--name` and `--description` for the new collection's display text.
+
+Creation writes only the named new JSON file and any missing parent directories.
+It never overwrites existing files or writes over project configuration. Paths
+are relative to the invoking directory; install's `--cwd` selects the destination
+project. List reads one directory of JSON files and reports invalid entries with
+`COLLECTION_LIST_INCOMPLETE` instead of silently omitting them.
+
+Share collection JSON files through your repository. Recipients configure their
+own namespace bindings and authentication in their project. Collections do not
+embed registry URLs, credentials, scripts, ownership claims, or copied dependency
+metadata, and they are not version-pinned dependency lockfiles. Installation uses
+the existing `add` selection, fresh metadata checks, confirmation, overwrite
+policy, upstream delegation, and destination verification. It supports the same
+compatible official/custom/private registries. Outside an interactive terminal,
+`--yes` is required. Installation has the same side effects and rollback limits as
+`add`; it does not use the cleanup operation journal.
+
+### `shadcn-plus collection migrate`
+
+Migration reads old `~/.compadcn/custom-presets.json` only when explicitly invoked.
+Omitting `--out` previews the conversion without writing collection files or a
+backup. Registry metadata may use the normal cache.
+
+```bash
+# Preview old custom presets against this project's configured registries.
+shadcn-plus collection migrate --cwd ./my-app --json
+
+# Choose the intended namespace for a colliding legacy name and write new files.
+shadcn-plus collection migrate --cwd ./my-app --map button=@shadcn/button --out migrated-collections --json
+
+# Import a particular legacy file/preset, with an explicit private mapping.
+shadcn-plus collection migrate --from ./old-presets.json --preset dashboard --map widget=@company/widget --out dashboard-collections --json
+```
+
+Bare legacy names are resolved from current configured catalogs, not the old
+hardcoded component/dependency list. Incomplete catalogs, unknown names, invalid
+entries, and names matching different origins block writing. Equivalent aliases
+for the same origin are collapsed; an available `@shadcn` address is preferred.
+Already qualified addresses are preserved. Repeated `--map old=@namespace/item`
+explicitly selects an address for every matching value in the selected presets.
+If every reference is qualified or mapped, migration needs no project scan or
+registry requests. Address availability is checked when the collection is installed.
+
+Use repeated `--preset <id>` to select legacy record IDs rather than display names.
+Without selection, all custom presets are considered. Names and descriptions are
+preserved; copied npm/internal dependency arrays are discarded from collection
+files. Malformed entries are reported rather than silently dropped. No collection
+artifact is exposed for a blocked entry, and no output directory is created until
+every selected entry is ready.
+
+`--out` must name a new directory. Migration rechecks the source bytes before
+writing, saves an exact `legacy-custom-presets.json.bak`, and writes one collection
+per selected preset. Filenames combine a readable legacy-ID prefix and stable
+suffix to avoid normalized-name collisions; display names remain unchanged.
+The original storage is never edited, deleted, or used automatically on startup.
+Share the resulting collection JSON files; keep the raw legacy backup local.
+
+JSON create/show responses contain `data.collection`; list uses `data.collections`.
+Install returns the existing `add` result. Migration returns `data.migration` with
+`preview`, `blocked`, or `written` status, per-entry issues, source fingerprint,
+backup, and written paths. Blocked migration exits `2` with `MIGRATION_BLOCKED`
+and the report under `error.details.migration`. Existing outputs and changed source
+data are rejected. If a filesystem error interrupts output, the original remains
+intact and `MIGRATION_WRITE_FAILED` identifies the output directory and completed
+writes for inspection before retrying in a new directory.
+
+Collections are strict version-1 files, limited to 1 MiB, 1,000 unique addresses,
+and 4,096 characters per address. Migration accepts up to 8 MiB of legacy data,
+1,000 presets, and 1,000 component entries per preset. The lazy API provides
+`createCollection`, `parseCollection`, `readCollection`, `writeCollection`,
+`listCollections`, and `migrateLegacyPresets`.
 
 ### `shadcn-plus remove [components...]`
 
@@ -743,8 +846,9 @@ your-project/
 
 ## Custom Presets
 
-Custom presets continue to use the existing `~/.compadcn/custom-presets.json`
-storage until an explicit migration is implemented. They can be:
+Legacy custom presets retain their existing `~/.compadcn/custom-presets.json`
+storage. Use `collection migrate` to explicitly create shareable collection files
+and an exact backup. The legacy preset commands remain available and can be:
 
 - Created from scratch
 - Based on existing presets
