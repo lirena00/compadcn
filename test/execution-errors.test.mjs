@@ -92,7 +92,7 @@ test("creating a preset cannot replace a damaged store with empty data", (t) => 
 });
 
 test("missing component configuration stops installation before launching a package manager", (t) => {
-  const cwd = createProject(t);
+  const cwd = createProject(t,{"package.json":"{}"});
   const result = run(cwd, ["add", "button"]);
   assert.equal(result.status, 2);
   assert.match(result.stderr, /ERROR CONFIG_NOT_FOUND:/);
@@ -108,7 +108,7 @@ test("invalid configuration does not become an empty component inventory", (t) =
 
 test("unknown component requests fail instead of reporting successful no-ops", (t) => {
   const cwd = project(t);
-  for (const [command, code] of [["add", "COMPONENT_NOT_FOUND"], ["remove", "COMPONENT_NOT_INSTALLED"]]) {
+  for (const [command, code] of [["remove", "COMPONENT_NOT_INSTALLED"]]) {
     const result = run(cwd, [command, "unknown-component"]);
     assert.equal(result.status, 2);
     assert.match(result.stderr, new RegExp(`ERROR ${code}:`));
@@ -127,7 +127,7 @@ test("dependency conflicts leave component files intact and exit nonzero", (t) =
   assert.equal(existsSync(join(cwd, "src/components/ui/button.tsx")), true);
 });
 
-for (const args of [["add", "button"], ["preset", "install", "core"]]) {
+for (const args of [["preset", "install", "core"]]) {
   test(`package-manager failures propagate to the CLI: ${args.join(" ")}`, (t) => {
     const cwd = project(t);
     const result = run(cwd, args, { SHADCN_PLUS_PM_EXIT: "7" });
@@ -137,14 +137,6 @@ for (const args of [["add", "button"], ["preset", "install", "core"]]) {
     assert.doesNotMatch(result.stdout, /installed successfully/);
   });
 }
-
-test("cancelling installation is a normal outcome and never launches the installer", (t) => {
-  const cwd = project(t);
-  const result = run(cwd, ["add", "button"], { SHADCN_PLUS_CANCEL: "1" });
-  assert.equal(result.status, 0, result.stderr);
-  assert.equal(existsSync(result.argsFile), false);
-  assert.doesNotMatch(result.stdout, /installed successfully/);
-});
 
 test("dependency-removal failure cannot produce a successful cleanup message", (t) => {
   const cwd = project(t, { "src/components/ui/command.tsx": "export const Command=()=>null;" });

@@ -2,6 +2,7 @@ import { CliError } from "../core/errors.js";
 import { buildInventory, type InventoryOptions } from "../inventory/build.js";
 import type { InventoryReport } from "../inventory/types.js";
 import { CliOutput, getOutputMode, type OutputOptions } from "./output.js";
+import { runTask } from "./task.js";
 
 export interface InventoryCliOptions {
   cwd: string;
@@ -47,7 +48,7 @@ export async function runInventory(options: InventoryCliOptions, outputOptions: 
     cwd: options.cwd, workspace: options.workspace, items: options.item, offline: options.offline, refresh: options.refresh,
     cacheDir: options.cache ? options.cacheDir : false, concurrency: Number(options.concurrency), timeoutMs: Number(options.timeout),
   };
-  const report = await buildInventory(settings);
+  const report = await runTask("Inventory", outputOptions, (task) => buildInventory({ ...settings, signal: task.signal, onProgress: task.onProgress }));
   const mode = getOutputMode(outputOptions);
   const text = formatInventory(report);
   if (!report.complete) throw new CliError("INVENTORY_INCOMPLETE", mode === "json" ? "Inventory coverage is incomplete. See report diagnostics and per-source status." : text, { report });

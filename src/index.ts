@@ -5,7 +5,8 @@ export { CliError } from "./core/errors.js";
 export { CliOutput, getOutputMode } from "./cli/output.js";
 export type { OutputMode, OutputOptions, OutputWriter } from "./cli/output.js";
 export type { ProgramOptions } from "./cli/create-program.js";
-export type { CommandSuccess, CommandFailure, CommandResult } from "./core/results.js";
+export type { CommandSuccess, CommandFailure, CommandCancellation, CommandResult } from "./core/results.js";
+export type { TaskEvent, TaskStage, ProgressOptions } from "./core/progress.js";
 export type { DiscoveryOptions } from "./project/discover.js";
 export type { ProjectContext, Diagnostic, ResolvedAlias, Workspace, WorkspacePackage } from "./project/types.js";
 export type { InventoryOptions } from "./inventory/build.js";
@@ -20,6 +21,9 @@ export type { AuditOptions } from "./audit/build.js";
 export type { AuditReport, WhyReport, FileFinding, ItemFinding, PackageFinding, UsageState } from "./audit/types.js";
 export type { EntryRoot } from "./analysis/types.js";
 export type { UsageProof } from "./analysis/reachability.js";
+export { createCatalogIndex, searchInventory } from "./catalog/model.js";
+export type { CatalogEntry, CatalogFilters, CatalogSearchReport } from "./catalog/model.js";
+export type { SearchOptions } from "./catalog/search.js";
 
 // Keep importing the API and constructing/helping the CLI free of filesystem scans.
 export async function discoverProject(
@@ -48,4 +52,8 @@ export async function auditProject(
 ): Promise<import("./audit/types.js").AuditReport> {
   const audit = await import("./audit/build.js");
   return audit.auditProject(options);
+}
+
+export async function searchCatalog(options:import("./catalog/search.js").SearchOptions={}):Promise<import("./catalog/model.js").CatalogSearchReport> {
+  return (await import("./catalog/search.js")).searchCatalog(options);
 }

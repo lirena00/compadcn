@@ -6,6 +6,7 @@ import type { AuditReport, WhyReport } from "../audit/types.js";
 import type { UsageProof } from "../analysis/reachability.js";
 import type { InventoryCliOptions } from "./inventory.js";
 import { CliOutput, getOutputMode, type OutputOptions } from "./output.js";
+import { runTask } from "./task.js";
 
 export interface AuditCliOptions extends Omit<InventoryCliOptions, "item"> {
   maxItems: string;
@@ -69,10 +70,10 @@ export function formatWhy(report: WhyReport): string {
 
 export async function runAudit(options: AuditCliOptions, outputOptions: OutputOptions, reference?: string): Promise<void> {
   if (!options.cache && options.cacheDir) throw new CliError("INVALID_OPTIONS", "Choose either --cache-dir or --no-cache.");
-  const report=await auditProject({cwd:options.cwd, workspace:options.workspace, offline:options.offline, refresh:options.refresh,
+  const report=await runTask("Audit", outputOptions, (task) => auditProject({signal:task.signal, onProgress:task.onProgress, cwd:options.cwd, workspace:options.workspace, offline:options.offline, refresh:options.refresh,
     cacheDir:options.cache ? options.cacheDir : false, concurrency:Number(options.concurrency), timeoutMs:Number(options.timeout),
     maxItems:Number(options.maxItems), maxFiles:Number(options.maxFiles), analysisTimeoutMs:Number(options.analysisTimeout),
-    entries:options.entry, devEntries:options.devEntry});
+    entries:options.entry, devEntries:options.devEntry}));
   const mode=getOutputMode(outputOptions);
   if (reference !== undefined) {
     const why=explainAudit(report,reference);

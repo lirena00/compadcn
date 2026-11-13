@@ -6,6 +6,7 @@ import { fileId, finishGraph, GraphStore } from "./model.js";
 import { registryClosure } from "./registry.js";
 import { sourceGraph } from "./source.js";
 import type { DependencyGraph } from "./types.js";
+import { reportProgress } from "../core/progress.js";
 
 export interface GraphOptions extends InventoryOptions {
   scope?: "installed" | "catalog";
@@ -28,6 +29,7 @@ export async function buildDependencyGraph(options: GraphOptions = {}): Promise<
   });
   const session = await createInventorySession({ ...options, items: requested.filter((value) => value.startsWith("@")) });
   const store = new GraphStore();
+  reportProgress(options, { stage: "graph", state: "start", message: "Resolving registry dependencies and source references" });
   for (const file of session.report.files) store.node({ id: fileId(file.path), kind: "file", label: file.path, path: file.path,
     scope: session.report.scopes.find((root) => file.path.startsWith(root)) ?? session.report.projectRoot,
     state: "present", contentHash: file.contentHash, originConfidence: file.origin });
@@ -62,6 +64,7 @@ export async function buildDependencyGraph(options: GraphOptions = {}): Promise<
   for (const edge of store.edges.values()) if (edge.kind === "item-file-candidate" && (owners.get(edge.to)?.size ?? 0) > 1) {
     store.node({ ...store.nodes.get(edge.from)!, originConfidence: "ambiguous" });
   }
+  reportProgress(options, { stage: "graph", state: "complete", message: `Indexed ${store.nodes.size} nodes and ${store.edges.size} relationships` });
   return finishGraph(store, {
     scope, projectRoot: session.report.projectRoot, scopes: [...new Set([...session.report.scopes, ...source.scopes])].sort(), seeds: registry.seeds,
     sources: session.report.sources, registrySources: [...new Map([...session.sources, ...registry.sources].map(({ descriptor }) => [descriptor.id, descriptor])).values()].sort((a, b) => a.id.localeCompare(b.id)),

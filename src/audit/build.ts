@@ -8,6 +8,7 @@ import { classifyUsage } from "./classify.js";
 import { auditPackages } from "./packages.js";
 import type { AuditReport } from "./types.js";
 import { validateAnalysisOptions } from "../analysis/options.js";
+import { reportProgress } from "../core/progress.js";
 
 export interface AuditOptions extends Omit<GraphOptions, "scope" | "items">, AnalysisOptions { entries?: string[]; devEntries?: string[] }
 
@@ -16,11 +17,15 @@ export async function auditProject(options: AuditOptions = {}): Promise<AuditRep
   const project = discoverProject({ cwd: options.cwd, env: options.env });
   const workspace = options.workspace ?? !!project.workspace;
   const graph = await buildDependencyGraph({ ...options, scope: "installed", items: undefined, workspace });
+  reportProgress(options, { stage: "roots", state: "start", message: "Discovering runtime, development, and public entry roots" });
   const roots = discoverRoots(graph, project, options);
+  reportProgress(options, { stage: "roots", state: "complete", message: `Identified ${roots.roots.length} entry roots` });
   const analysis = await analyzeWithKnip(roots, options);
   const workspaceComplete = !project.workspace || workspace;
+  reportProgress(options, { stage: "classification", state: "start", message: "Comparing analyzers and collecting retention evidence" });
   const classified = classifyUsage(graph, roots, analysis, workspaceComplete);
   const packages = auditPackages(graph, roots, analysis, classified.items, classified.runtime, classified.all, classified.reliable);
+  reportProgress(options, { stage: "classification", state: "complete", message: `Classified ${classified.items.length} local item groups` });
   const diagnostics: Diagnostic[] = [...graph.diagnostics, ...roots.diagnostics, ...analysis.all.diagnostics, ...analysis.production.diagnostics,
     ...(!workspaceComplete ? [{ code: "WORKSPACE_COVERAGE_PARTIAL", severity: "error" as const, message: "Audit requires all workspace consumers before proposing unused candidates.", path: project.workspace!.root }] : []),
     ...classified.files.filter(({ reasons }) => reasons.includes("ANALYZER_DISAGREEMENT")).map(({ path }) => ({ code: "ANALYZER_DISAGREEMENT", severity: "error" as const, message: "Usage analysis and the reference index disagree; retain this file.", path }))];

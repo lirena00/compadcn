@@ -10,8 +10,9 @@ import { canonicalJSON, digest } from "../core/hash.js";
 import { canonicalPath, isObject, isWithin } from "../project/files.js";
 import type { KnipAnalysis, KnipRun, RootPolicy } from "./types.js";
 import { validateAnalysisOptions } from "./options.js";
+import { reportProgress, type ProgressOptions } from "../core/progress.js";
 
-export interface AnalysisOptions { analysisTimeoutMs?: number; signal?: AbortSignal; env?: NodeJS.ProcessEnv }
+export interface AnalysisOptions extends ProgressOptions { analysisTimeoutMs?: number; signal?: AbortSignal; env?: NodeJS.ProcessEnv }
 
 export function parseKnipReport(input: string, policy: RootPolicy, mode: KnipRun["mode"], durationMs = 0): KnipRun {
   const data: unknown = JSON.parse(input);
@@ -93,8 +94,12 @@ export async function analyzeWithKnip(policy: RootPolicy, options: AnalysisOptio
         return parsed;
       } catch (error) { return empty(error instanceof CliError ? error.code : "KNIP_REPORT_INVALID", error instanceof CliError ? error.message : "Usage analysis did not return a valid bounded report."); }
     };
+    reportProgress(options, { stage: "analysis-all", state: "start", message: "Analyzing runtime and development references" });
     const all = await run("all");
+    reportProgress(options, { stage: "analysis-all", state: "complete", message: `All-source analysis ${all.complete ? "complete" : "incomplete"}` });
+    reportProgress(options, { stage: "analysis-production", state: "start", message: "Analyzing production references" });
     const production = await run("production");
+    reportProgress(options, { stage: "analysis-production", state: "complete", message: `Production analysis ${production.complete ? "complete" : "incomplete"}` });
     return { version: "6.45.0", configFingerprint: fingerprint, all, production, complete: all.complete && production.complete };
   } finally {
     const target = resolve(directory);

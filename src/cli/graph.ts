@@ -4,6 +4,7 @@ import { formatMermaid, selectGraph } from "../graph/export.js";
 import type { DependencyGraph } from "../graph/types.js";
 import type { InventoryCliOptions } from "./inventory.js";
 import { CliOutput, getOutputMode, type OutputOptions } from "./output.js";
+import { runTask } from "./task.js";
 
 export interface GraphCliOptions extends InventoryCliOptions {
   scope: "installed" | "catalog";
@@ -40,11 +41,12 @@ export async function runGraph(options: GraphCliOptions, outputOptions: OutputOp
   if ((!options.focus && (options.reverse || options.transitive)) || (!options.cache && options.cacheDir)) {
     throw new CliError("INVALID_OPTIONS", "Reverse/transitive views require --focus; choose either --cache-dir or --no-cache.");
   }
-  let graph = await buildDependencyGraph({
+  let graph = await runTask("Graph", outputOptions, (task) => buildDependencyGraph({
+    signal: task.signal, onProgress: task.onProgress,
     cwd: options.cwd, workspace: options.workspace, items: options.item, offline: options.offline, refresh: options.refresh,
     cacheDir: options.cache ? options.cacheDir : false, concurrency: Number(options.concurrency), timeoutMs: Number(options.timeout),
     scope: options.scope, maxItems: Number(options.maxItems), maxFiles: Number(options.maxFiles),
-  });
+  }));
   if (options.focus) graph = selectGraph(graph, options.focus, { direction: options.reverse ? "dependents" : "dependencies", transitive: options.transitive });
   const mermaid = options.mermaid ? formatMermaid(graph) : undefined;
   const data = mermaid ? { ...graph, mermaid } : graph;
