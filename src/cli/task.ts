@@ -13,7 +13,7 @@ export interface TaskContext {
   beginMutation: () => void;
 }
 
-export async function runTask<T>(title: string, options: OutputOptions, operation: (context: TaskContext) => Promise<T>): Promise<T> {
+export async function runTask<T>(title: string, options: OutputOptions, operation: (context: TaskContext) => Promise<T>, policy: { handlesCancellation?: boolean } = {}): Promise<T> {
   const controller = new AbortController();
   const abort = () => controller.abort();
   const mode = getOutputMode(options);
@@ -53,7 +53,7 @@ export async function runTask<T>(title: string, options: OutputOptions, operatio
       }
     };
     const result = await operation({ signal: controller.signal, onProgress, pause, beginMutation: () => { mutating = true; pause(); } });
-    if (controller.signal.aborted) throw new CommandCancelled();
+    if (controller.signal.aborted && !policy.handlesCancellation) throw new CommandCancelled();
     if (started) {
       const incomplete = typeof result === "object" && result !== null && "complete" in result && result.complete === false;
       display?.stop(`${title} finished${incomplete ? " with incomplete coverage" : ""} (${elapsed()})`);
@@ -61,11 +61,11 @@ export async function runTask<T>(title: string, options: OutputOptions, operatio
     }
     return result;
   } catch (error) {
-    if (controller.signal.aborted && mutating) {
+    if (controller.signal.aborted && mutating && !policy.handlesCancellation) {
       if (started) display?.error("Installation interrupted");
       throw new CliError("INSTALL_INTERRUPTED", "Installation was interrupted after the installer started. Project files may have changed; inspect the project before retrying.");
     }
-    if (controller.signal.aborted || error instanceof CommandCancelled) {
+    if ((controller.signal.aborted && !policy.handlesCancellation) || error instanceof CommandCancelled) {
       if (started) display?.cancel("Cancelled");
       throw error instanceof CommandCancelled ? error : new CommandCancelled();
     }
